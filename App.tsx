@@ -19,11 +19,10 @@ try {
   if (apiKey) {
     ai = new GoogleGenAI(apiKey);
     apiKeyAvailable = true;
-  } else {
-    console.warn("API_KEY environment variable not set. Gemini API calls will be unavailable.");
   }
 } catch (error) {
   console.error("Failed to initialize GoogleGenAI:", error);
+  apiKeyAvailable = false;
 }
 
 const App: React.FC = () => {
@@ -288,9 +287,9 @@ const App: React.FC = () => {
         <FileUploadArea onChange={handleFileChange} disabled={isLoading} multiple={true} />
         
         {apiKeyMissingWarning && (
-            <AlertMessage type="warning\" message="Warning: API_KEY is not set. The application will not be able to communicate with the Gemini API." />
+            <AlertMessage type="warning" message="Warning: API_KEY is not set. The application will not be able to communicate with the Gemini API." />
         )}
-        {overallError && <AlertMessage type="error\" message={overallError} onClose={() => setOverallError(null)} />}
+        {overallError && <AlertMessage type="error" message={overallError} onClose={() => setOverallError(null)} />}
 
         {filesData.length > 0 && (
           <div className="space-y-3">
