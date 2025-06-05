@@ -14,15 +14,16 @@ import { FileText, UploadCloud, Zap, CheckCircle, XCircle, Info, Search, HelpCir
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
 
-try {
-  const apiKey = process.env.API_KEY;
-  if (apiKey) {
+const apiKey = import.meta.env.VITE_API_KEY || process.env.API_KEY;
+if (!apiKey) {
+  console.error("API key not found in environment variables");
+} else {
+  try {
     ai = new GoogleGenAI(apiKey);
     apiKeyAvailable = true;
+  } catch (error) {
+    console.error("Failed to initialize GoogleGenAI:", error);
   }
-} catch (error) {
-  console.error("Failed to initialize GoogleGenAI:", error);
-  apiKeyAvailable = false;
 }
 
 const App: React.FC = () => {
@@ -287,9 +288,9 @@ const App: React.FC = () => {
         <FileUploadArea onChange={handleFileChange} disabled={isLoading} multiple={true} />
         
         {apiKeyMissingWarning && (
-            <AlertMessage type="warning\" message="Warning: API_KEY is not set. The application will not be able to communicate with the Gemini API." />
+            <AlertMessage type="warning" message="Warning: API_KEY is not set. The application will not be able to communicate with the Gemini API." />
         )}
-        {overallError && <AlertMessage type="error\" message={overallError} onClose={() => setOverallError(null)} />}
+        {overallError && <AlertMessage type="error" message={overallError} onClose={() => setOverallError(null)} />}
 
         {filesData.length > 0 && (
           <div className="space-y-3">
