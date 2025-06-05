@@ -1,0 +1,6 @@
+{
+  "name": "AI Fine-Tuning Dataset Generator",
+  "description": "A minimalist webapp that enables users to upload content (docx, pdf, html, jsonl, txt, md), cleans it, and transforms it into a Q&A dataset for model fine-tuning, downloadable as CSV or JSONL.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
