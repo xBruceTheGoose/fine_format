@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, ChangeEvent, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { QAPair, FileData, CombinedProcessedData, GroundingMetadata } from './types';
@@ -14,9 +13,11 @@ import { FileText, UploadCloud, Zap, CheckCircle, XCircle, Info, Search, HelpCir
 
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
+
 try {
-  if (process.env.API_KEY) {
-    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = process.env.API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI(apiKey);
     apiKeyAvailable = true;
   } else {
     console.warn("API_KEY environment variable not set. Gemini API calls will be unavailable.");
