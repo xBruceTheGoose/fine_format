@@ -136,7 +136,7 @@
   }
 
   .status-incorrect {
-    @apply text-error;
+    @apply text-warning;
     text-shadow: 0 0 3px currentColor;
   }
 
@@ -147,9 +147,9 @@
   }
 
   .cyber-alert-error {
-    background: linear-gradient(135deg, rgba(255, 68, 68, 0.08), rgba(255, 68, 68, 0.04));
-    border-color: #FF4444;
-    box-shadow: 0 0 5px rgba(255, 68, 68, 0.2);
+    background: linear-gradient(135deg, rgba(255, 0, 128, 0.08), rgba(255, 0, 128, 0.04));
+    border-color: #FF0080;
+    box-shadow: 0 0 5px rgba(255, 0, 128, 0.2);
   }
 
   .cyber-alert-warning {

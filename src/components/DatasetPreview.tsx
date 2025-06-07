@@ -67,7 +67,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
     return (
       <Card>
         <CardContent>
-          <p className="text-gray-400 text-center py-8">
+          <p className="text-muted text-center py-8 font-mono">
             No Q&A pairs generated. The content might be too short or not suitable for Q&A generation.
           </p>
         </CardContent>
@@ -80,69 +80,74 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   const totalSources = sourceFileCount + sourceUrlCount;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Dataset Overview */}
       <Card>
         <CardHeader>
-          <h3 className="text-xl font-semibold text-primary-light flex items-center">
-            <Lightbulb size={24} className="mr-2" />
-            Generated Dataset Overview
+          <h3 className="text-2xl font-bold text-primary flex items-center font-mono tracking-wide">
+            <Lightbulb size={28} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }} />
+            GENERATED DATASET OVERVIEW
           </h3>
-          <p className="text-gray-400">
-            {qaPairs.length} Q&A pairs from {totalSources} source{totalSources !== 1 ? 's' : ''}
+          <p className="text-foreground font-mono mt-2">
+            <span className="neon-text">{qaPairs.length} Q&A PAIRS</span> from{' '}
+            <span className="text-accent">{totalSources} source{totalSources !== 1 ? 's' : ''}</span>
             {sourceFileCount > 0 && ` (${sourceFileCount} file${sourceFileCount !== 1 ? 's' : ''})`}
             {sourceUrlCount > 0 && ` (${sourceUrlCount} URL${sourceUrlCount !== 1 ? 's' : ''})`}
             {isAugmented && (
-              <span className="inline-flex items-center ml-2 px-2 py-1 bg-primary/20 text-primary-light rounded-full text-xs">
-                <Search size={12} className="mr-1" />
-                Web Enhanced
+              <span className="inline-flex items-center ml-3 px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-bold border border-accent/30">
+                <Search size={14} className="mr-2" />
+                WEB ENHANCED
               </span>
             )}
           </p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="bg-green-900/20 border border-green-700 rounded-lg p-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div className="cyber-alert-success border-success rounded-lg p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-green-300 font-semibold">{correctAnswerCount}</p>
-                  <p className="text-green-400 text-sm">Correct Answers</p>
+                  <p className="text-success font-bold text-2xl font-mono">{correctAnswerCount}</p>
+                  <p className="text-success font-semibold font-mono tracking-wide">CORRECT ANSWERS</p>
                 </div>
-                <CheckCircle size={24} className="text-green-400" />
+                <CheckCircle size={32} className="text-success" style={{ filter: 'drop-shadow(0 0 5px #00FF41)' }} />
               </div>
             </div>
-            <div className="bg-red-900/20 border border-red-700 rounded-lg p-4">
+            <div className="cyber-alert-warning border-warning rounded-lg p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-red-300 font-semibold">{incorrectAnswerCount}</p>
-                  <p className="text-red-400 text-sm">Incorrect Answers</p>
+                  <p className="text-warning font-bold text-2xl font-mono">{incorrectAnswerCount}</p>
+                  <p className="text-warning font-semibold font-mono tracking-wide">INCORRECT ANSWERS</p>
                 </div>
-                <XCircle size={24} className="text-red-400" />
+                <XCircle size={32} className="text-warning" style={{ filter: 'drop-shadow(0 0 5px #FFFF00)' }} />
               </div>
             </div>
-            <div className="bg-primary/20 border border-primary rounded-lg p-4">
+            <div className="cyber-alert-info border-accent rounded-lg p-5">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-primary-light font-semibold">{identifiedThemes.length}</p>
-                  <p className="text-primary text-sm">Key Themes</p>
+                  <p className="text-accent font-bold text-2xl font-mono">{identifiedThemes.length}</p>
+                  <p className="text-accent font-semibold font-mono tracking-wide">KEY THEMES</p>
                 </div>
-                <Target size={24} className="text-primary" />
+                <Target size={32} className="text-accent" style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }} />
               </div>
             </div>
           </div>
 
           {/* Identified Themes */}
           {identifiedThemes.length > 0 && (
-            <div className="mb-6">
-              <h4 className="text-lg font-semibold text-gray-300 mb-3 flex items-center">
-                <TrendingUp size={18} className="mr-2 text-primary" />
-                Identified Themes
+            <div className="mb-8">
+              <h4 className="text-xl font-bold text-primary mb-4 flex items-center font-mono tracking-wide">
+                <TrendingUp size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+                IDENTIFIED THEMES
               </h4>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-3">
                 {identifiedThemes.map((theme, index) => (
                   <span
                     key={index}
-                    className="px-3 py-1 bg-primary/10 text-primary-light border border-primary/30 rounded-full text-sm"
+                    className="px-4 py-2 bg-primary/10 text-primary border border-primary/30 rounded-full font-semibold font-mono tracking-wide"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04))',
+                      boxShadow: '0 0 5px rgba(0, 255, 65, 0.2)'
+                    }}
                   >
                     {theme}
                   </span>
@@ -152,45 +157,45 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           )}
 
           {/* Sample Q&A Pairs */}
-          <div className="space-y-4">
-            <h4 className="text-lg font-semibold text-gray-300">Sample Q&A Pairs</h4>
+          <div className="space-y-6">
+            <h4 className="text-xl font-bold text-primary font-mono tracking-wide">SAMPLE Q&A PAIRS</h4>
             {previewPairs.map((pair, index) => (
-              <div key={index} className={`p-4 rounded-lg border ${
+              <div key={index} className={`p-5 rounded-lg border transition-all duration-300 ${
                 pair.isCorrect 
-                  ? 'bg-green-900/10 border-green-700/50' 
-                  : 'bg-red-900/10 border-red-700/50'
+                  ? 'cyber-alert-success border-success' 
+                  : 'cyber-alert-warning border-warning'
               }`}>
-                <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start justify-between mb-4">
                   <div className="flex items-start flex-1">
-                    <MessageSquare size={18} className="text-primary mr-2 mt-1 flex-shrink-0" />
+                    <MessageSquare size={24} className="text-accent mr-3 mt-1 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
                     <div className="flex-1">
-                      <p className="font-medium text-gray-200 text-sm">Question:</p>
-                      <p className="text-gray-300 text-sm mt-1">{pair.user}</p>
+                      <p className="font-bold text-foreground font-mono tracking-wide">QUESTION:</p>
+                      <p className="text-foreground font-mono mt-2 leading-relaxed">{pair.user}</p>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-2 ml-4">
+                  <div className="flex items-center space-x-3 ml-6">
                     {pair.isCorrect ? (
-                      <CheckCircle size={16} className="text-green-400" />
+                      <CheckCircle size={20} className="text-success" style={{ filter: 'drop-shadow(0 0 3px #00FF41)' }} />
                     ) : (
-                      <XCircle size={16} className="text-red-400" />
+                      <XCircle size={20} className="text-warning" style={{ filter: 'drop-shadow(0 0 3px #FFFF00)' }} />
                     )}
-                    <span className={`text-xs px-2 py-1 rounded ${
+                    <span className={`text-sm px-3 py-1 rounded-full font-bold font-mono tracking-wide ${
                       pair.isCorrect 
-                        ? 'bg-green-900/30 text-green-300' 
-                        : 'bg-red-900/30 text-red-300'
+                        ? 'bg-success/20 text-success border border-success/30' 
+                        : 'bg-warning/20 text-warning border border-warning/30'
                     }`}>
-                      {pair.isCorrect ? 'Correct' : 'Incorrect'}
+                      {pair.isCorrect ? 'CORRECT' : 'INCORRECT'}
                     </span>
                   </div>
                 </div>
                 <div className="flex items-start">
-                  <Bot size={18} className="text-accent mr-2 mt-1 flex-shrink-0" />
+                  <Bot size={24} className="text-secondary mr-3 mt-1 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
                   <div>
-                    <p className="font-medium text-gray-200 text-sm">Answer:</p>
-                    <p className="text-gray-300 text-sm mt-1">{pair.model}</p>
+                    <p className="font-bold text-foreground font-mono tracking-wide">ANSWER:</p>
+                    <p className="text-foreground font-mono mt-2 leading-relaxed">{pair.model}</p>
                     {pair.confidence && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        Confidence: {(pair.confidence * 100).toFixed(0)}%
+                      <p className="text-accent font-bold font-mono mt-2 tracking-wide">
+                        CONFIDENCE: {(pair.confidence * 100).toFixed(0)}%
                       </p>
                     )}
                   </div>
@@ -198,8 +203,8 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
               </div>
             ))}
             {qaPairs.length > 4 && (
-              <p className="text-center text-gray-400 text-sm">
-                ...and {qaPairs.length - 4} more pairs ({correctAnswerCount - previewPairs.filter(p => p.isCorrect).length} correct, {incorrectAnswerCount - previewPairs.filter(p => !p.isCorrect).length} incorrect)
+              <p className="text-center text-accent font-mono font-semibold">
+                ...and <span className="neon-text-accent">{qaPairs.length - 4} MORE PAIRS</span> ({correctAnswerCount - previewPairs.filter(p => p.isCorrect).length} correct, {incorrectAnswerCount - previewPairs.filter(p => !p.isCorrect).length} incorrect)
               </p>
             )}
           </div>
@@ -210,16 +215,16 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {webSources.length > 0 && (
         <Card>
           <CardHeader>
-            <h4 className="text-lg font-semibold text-gray-300 flex items-center">
-              <Search size={20} className="mr-2 text-primary" />
-              Web Sources Used ({webSources.length})
+            <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+              <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+              WEB SOURCES USED ({webSources.length})
             </h4>
-            <p className="text-sm text-gray-400">
+            <p className="text-foreground font-mono mt-2">
               Content was enhanced with information from these web sources
             </p>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {webSources.map((chunk, index) => (
                 chunk.web && (
                   <a
@@ -227,10 +232,13 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     href={chunk.web.uri}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block p-3 bg-gray-700/50 rounded-lg text-sm text-primary-light hover:text-primary hover:bg-gray-700 transition-colors border border-gray-600 hover:border-primary/50"
+                    className="block p-4 bg-surface/50 rounded-lg font-mono text-accent hover:text-primary hover:bg-surface/70 transition-all duration-300 border border-border hover:border-primary/50"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
+                    }}
                   >
-                    <div className="font-medium">{chunk.web.title || 'Web Source'}</div>
-                    <div className="text-xs text-gray-400 mt-1 truncate">{chunk.web.uri}</div>
+                    <div className="font-bold tracking-wide">{chunk.web.title || 'Web Source'}</div>
+                    <div className="text-muted text-sm mt-1 truncate">{chunk.web.uri}</div>
                   </a>
                 )
               ))}
@@ -242,37 +250,45 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {/* Download Options */}
       <Card>
         <CardHeader>
-          <div className="flex items-center space-x-2">
-            <h4 className="text-lg font-semibold text-gray-300 flex items-center">
-              <Download size={20} className="mr-2" />
-              Download Fine-Tuning Dataset
+          <div className="flex items-center space-x-3">
+            <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+              <Download size={24} className="mr-3" style={{ filter: 'drop-shadow(0 0 3px #00FF41)' }} />
+              DOWNLOAD FINE-TUNING DATASET
             </h4>
             <Tooltip content="Select your fine-tuning platform to get the optimal dataset format. Each platform has specific requirements for data structure, labeling, and file format." />
           </div>
-          <p className="text-sm text-gray-400">
+          <p className="text-foreground font-mono mt-2">
             Choose your fine-tuning method for optimized dataset formatting
           </p>
         </CardHeader>
         <CardContent>
           {/* Fine-tuning Method Selector */}
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Fine-Tuning Platform
+          <div className="mb-8">
+            <label className="block text-lg font-bold text-primary mb-3 font-mono tracking-wide">
+              FINE-TUNING PLATFORM
             </label>
             <div className="relative">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 text-left flex items-center justify-between hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-5 py-4 cyber-input text-foreground text-left flex items-center justify-between hover:border-primary/50 focus:border-primary font-mono"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))'
+                }}
               >
                 <div>
-                  <div className="font-medium">{selectedConfig?.name}</div>
-                  <div className="text-sm text-gray-400">{selectedConfig?.description}</div>
+                  <div className="font-bold text-lg text-primary">{selectedConfig?.name}</div>
+                  <div className="text-accent font-semibold mt-1">{selectedConfig?.description}</div>
                 </div>
-                <ChevronDown size={20} className={`text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={24} className={`text-accent transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
               
               {isDropdownOpen && (
-                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-2 bg-surface border border-border rounded-lg shadow-lg max-h-80 overflow-y-auto"
+                     style={{
+                       background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(26, 26, 26, 0.9))',
+                       backdropFilter: 'blur(10px)',
+                       boxShadow: '0 0 20px rgba(0, 255, 65, 0.1)'
+                     }}>
                   {FINE_TUNING_METHODS.map((method) => (
                     <button
                       key={method.id}
@@ -280,14 +296,14 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                         setSelectedMethod(method.id);
                         setIsDropdownOpen(false);
                       }}
-                      className={`w-full px-4 py-3 text-left hover:bg-gray-600 transition-colors ${
-                        selectedMethod === method.id ? 'bg-primary/20 text-primary-light' : 'text-gray-100'
+                      className={`w-full px-5 py-4 text-left hover:bg-surface/70 transition-all duration-300 font-mono ${
+                        selectedMethod === method.id ? 'bg-primary/10 text-primary border-l-4 border-primary' : 'text-foreground'
                       }`}
                     >
-                      <div className="font-medium">{method.name}</div>
-                      <div className="text-sm text-gray-400">{method.description}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        Formats: {method.formats.join(', ')}
+                      <div className="font-bold text-lg">{method.name}</div>
+                      <div className="text-accent font-semibold mt-1">{method.description}</div>
+                      <div className="text-accent font-bold text-sm mt-2 tracking-wider">
+                        FORMATS: {method.formats.join(', ').toUpperCase()}
                       </div>
                     </button>
                   ))}
@@ -297,48 +313,49 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           </div>
 
           {/* Download Buttons */}
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-3">
+          <div className="space-y-6">
+            <div className="flex flex-wrap gap-4">
               {selectedConfig?.formats.map((format) => (
                 <Button
                   key={format}
                   variant="secondary"
                   icon={Download}
                   onClick={() => handleDownload(format)}
+                  className="px-6 py-3 font-bold"
                 >
-                  Download {format.toUpperCase()}
+                  DOWNLOAD {format.toUpperCase()}
                 </Button>
               ))}
             </div>
 
             {/* Fine-Tuning Guide Download */}
-            <div className="border-t border-gray-600 pt-4">
+            <div className="border-t border-border pt-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h5 className="text-sm font-medium text-gray-300 flex items-center">
-                    <FileText size={16} className="mr-2 text-primary" />
-                    Fine-Tuning Guide
+                  <h5 className="text-lg font-bold text-primary flex items-center font-mono tracking-wide">
+                    <FileText size={20} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+                    FINE-TUNING GUIDE
                   </h5>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-accent font-semibold mt-1 font-mono">
                     Complete setup instructions and optimal parameters for {selectedConfig?.name}
                   </p>
                 </div>
                 <Button
                   variant="outline"
-                  size="sm"
+                  size="md"
                   icon={FileText}
                   onClick={handleDownloadGuide}
-                  className="ml-4"
+                  className="ml-6 px-6 py-3"
                 >
-                  Download Guide
+                  DOWNLOAD GUIDE
                 </Button>
               </div>
             </div>
           </div>
           
-          <div className="mt-4 p-3 bg-gray-700/30 rounded-lg">
-            <p className="text-xs text-gray-400">
-              <strong>{selectedConfig?.name} format:</strong> Each Q&A pair includes correctness labels and confidence scores optimized for {selectedConfig?.name}. 
+          <div className="mt-6 p-4 bg-surface/30 rounded-lg border border-border">
+            <p className="text-accent font-semibold font-mono leading-relaxed">
+              <strong className="text-primary">{selectedConfig?.name} FORMAT:</strong> Each Q&A pair includes correctness labels and confidence scores optimized for {selectedConfig?.name}. 
               Incorrect answers are strategically included to improve model discrimination and reduce hallucination.
             </p>
           </div>
