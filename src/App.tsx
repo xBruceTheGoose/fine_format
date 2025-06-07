@@ -285,7 +285,7 @@ const App: React.FC = () => {
             <span className="text-primary">SUPPORTS:</span> .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
           </p>
           <p className="text-muted text-sm font-mono">
-            Made with <span className="text-secondary neon-text-secondary">&lt;3</span> and{' '}
+            Made with <span className="text-secondary neon-text-secondary">{'<3'}</span> and{' '}
             <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
             <span className="text-foreground">brucethegoose.eth</span>
           </p>
