@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain } from 'lucide-react';
+import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
 import { openRouterService } from './services/openRouterService';
@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
   const [enableGapFilling, setEnableGapFilling] = useState(true);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
+  const [currentGoalIndex, setCurrentGoalIndex] = useState(1); // Start with 'knowledge' (index 1)
   
   const {
     processedData,
@@ -54,6 +55,27 @@ const App: React.FC = () => {
       default: return Target;
     }
   };
+
+  const nextGoal = () => {
+    const nextIndex = (currentGoalIndex + 1) % FINE_TUNING_GOALS.length;
+    setCurrentGoalIndex(nextIndex);
+    setFineTuningGoal(FINE_TUNING_GOALS[nextIndex].id);
+  };
+
+  const prevGoal = () => {
+    const prevIndex = currentGoalIndex === 0 ? FINE_TUNING_GOALS.length - 1 : currentGoalIndex - 1;
+    setCurrentGoalIndex(prevIndex);
+    setFineTuningGoal(FINE_TUNING_GOALS[prevIndex].id);
+  };
+
+  const selectGoal = (goalId: FineTuningGoal) => {
+    const index = FINE_TUNING_GOALS.findIndex(g => g.id === goalId);
+    setCurrentGoalIndex(index);
+    setFineTuningGoal(goalId);
+  };
+
+  const currentGoal = FINE_TUNING_GOALS[currentGoalIndex];
+  const IconComponent = getGoalIcon(currentGoal.id);
 
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden">
@@ -127,7 +149,7 @@ const App: React.FC = () => {
             />
           )}
 
-          {/* Fine-Tuning Goal Selection */}
+          {/* Fine-Tuning Goal Selection - Carousel Style */}
           <Card className="cyber-card">
             <CardHeader>
               <div className="flex items-center space-x-3">
@@ -137,70 +159,144 @@ const App: React.FC = () => {
                     className="mr-3 text-accent" 
                     style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
                   />
-                  FINE-TUNING GOAL
+                  SELECT YOUR FINE-TUNING GOAL
                 </h3>
-                <Tooltip content="Select the primary focus for your dataset generation. This determines how the AI will analyze your content and generate Q&A pairs optimized for your specific fine-tuning objectives." />
+                <Tooltip content="Choose the primary focus for your dataset generation. This determines how the AI will analyze your content and generate Q&A pairs optimized for your specific fine-tuning objectives." />
               </div>
+              <p className="text-accent font-semibold mt-2 font-mono">
+                <span className="neon-text-accent">SWIPE OR CLICK</span> to explore different objectives
+              </p>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {FINE_TUNING_GOALS.map((goal) => {
-                  const IconComponent = getGoalIcon(goal.id);
-                  const isSelected = fineTuningGoal === goal.id;
-                  
-                  return (
-                    <button
-                      key={goal.id}
-                      onClick={() => setFineTuningGoal(goal.id)}
-                      disabled={isProcessing}
-                      className={`
-                        p-4 rounded-lg border-2 transition-all duration-300 text-left relative overflow-hidden
-                        ${isSelected 
-                          ? 'border-accent bg-accent/10 shadow-neon' 
-                          : 'border-border bg-surface/30 hover:border-accent/50 hover:bg-surface/50'
-                        }
-                        ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                      `}
-                      style={{
-                        background: isSelected 
-                          ? 'linear-gradient(135deg, rgba(0, 255, 255, 0.08), rgba(0, 255, 255, 0.04))'
-                          : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))',
-                        boxShadow: isSelected 
-                          ? '0 0 20px rgba(0, 255, 255, 0.3), inset 0 0 20px rgba(0, 255, 255, 0.05)'
-                          : undefined
-                      }}
-                    >
-                      <div className="flex items-start space-x-3">
-                        <div className="text-2xl">{goal.icon}</div>
+              {/* Carousel Container */}
+              <div className="relative">
+                {/* Main Goal Display */}
+                <div className="relative overflow-hidden rounded-lg">
+                  <div 
+                    className="p-8 rounded-lg border-2 border-accent bg-accent/10 shadow-neon relative overflow-hidden transition-all duration-500"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(0, 255, 255, 0.12), rgba(0, 255, 255, 0.06))',
+                      boxShadow: '0 0 30px rgba(0, 255, 255, 0.4), inset 0 0 30px rgba(0, 255, 255, 0.08)',
+                      minHeight: '200px'
+                    }}
+                  >
+                    {/* Selection Indicator */}
+                    <div className="absolute top-4 right-4">
+                      <div className="w-4 h-4 bg-accent rounded-full animate-pulse"
+                           style={{ boxShadow: '0 0 8px #00FFFF' }} />
+                    </div>
+
+                    {/* Goal Content */}
+                    <div className="flex items-start space-x-6">
+                      <div className="flex flex-col items-center space-y-3">
+                        <div className="text-6xl">{currentGoal.icon}</div>
                         <IconComponent 
-                          size={24} 
-                          className={`${isSelected ? 'text-accent' : 'text-accent'} flex-shrink-0`}
-                          style={{ filter: `drop-shadow(0 0 3px ${isSelected ? '#00FFFF' : '#00FFFF'})` }}
+                          size={32} 
+                          className="text-accent"
+                          style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
                         />
                       </div>
-                      <h4 className={`font-bold text-lg mt-3 font-mono tracking-wide ${
-                        isSelected ? 'neon-text-accent' : 'text-foreground'
-                      }`}>
-                        {goal.name}
-                      </h4>
-                      <p className="text-muted text-sm mt-2 font-mono leading-relaxed">
-                        {goal.description}
-                      </p>
-                      {isSelected && (
-                        <div className="absolute top-2 right-2">
-                          <div className="w-3 h-3 bg-accent rounded-full animate-pulse"
-                               style={{ boxShadow: '0 0 5px #00FFFF' }} />
+                      <div className="flex-1">
+                        <h4 className="neon-text-accent font-bold text-2xl mb-3 font-mono tracking-wide">
+                          {currentGoal.name}
+                        </h4>
+                        <p className="text-foreground text-lg mb-4 font-mono leading-relaxed">
+                          {currentGoal.description}
+                        </p>
+                        <div className="p-3 bg-surface/40 rounded-lg border border-accent/30">
+                          <p className="text-accent text-sm font-mono">
+                            <span className="neon-text-accent font-bold">FOCUS:</span>{' '}
+                            {currentGoal.promptFocus}
+                          </p>
                         </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-4 p-3 bg-surface/30 rounded-lg border border-border">
-                <p className="text-accent text-sm font-mono">
-                  <span className="neon-text-accent">SELECTED FOCUS:</span>{' '}
-                  {FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal)?.promptFocus}
-                </p>
+                      </div>
+                    </div>
+
+                    {/* Animated background effect */}
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div 
+                        className="absolute top-0 left-0 right-0 h-px bg-accent opacity-70"
+                        style={{
+                          animation: 'scanline 3s linear infinite',
+                          boxShadow: '0 0 5px #00FFFF'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Navigation Controls */}
+                <div className="flex items-center justify-between mt-6">
+                  {/* Previous Button */}
+                  <button
+                    onClick={prevGoal}
+                    disabled={isProcessing}
+                    className="flex items-center space-x-2 px-4 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
+                    }}
+                  >
+                    <ChevronLeft size={20} className="text-accent" />
+                    <span className="text-accent font-mono font-semibold">PREVIOUS</span>
+                  </button>
+
+                  {/* Goal Indicators */}
+                  <div className="flex items-center space-x-3">
+                    {FINE_TUNING_GOALS.map((goal, index) => (
+                      <button
+                        key={goal.id}
+                        onClick={() => selectGoal(goal.id)}
+                        disabled={isProcessing}
+                        className={`w-3 h-3 rounded-full transition-all duration-300 ${
+                          index === currentGoalIndex 
+                            ? 'bg-accent shadow-neon' 
+                            : 'bg-border hover:bg-accent/50'
+                        }`}
+                        style={{
+                          boxShadow: index === currentGoalIndex ? '0 0 8px #00FFFF' : undefined
+                        }}
+                        title={goal.name}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Next Button */}
+                  <button
+                    onClick={nextGoal}
+                    disabled={isProcessing}
+                    className="flex items-center space-x-2 px-4 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
+                    }}
+                  >
+                    <span className="text-accent font-mono font-semibold">NEXT</span>
+                    <ChevronRight size={20} className="text-accent" />
+                  </button>
+                </div>
+
+                {/* Quick Selection Pills */}
+                <div className="flex flex-wrap justify-center gap-3 mt-6">
+                  {FINE_TUNING_GOALS.map((goal, index) => {
+                    const isSelected = index === currentGoalIndex;
+                    return (
+                      <button
+                        key={goal.id}
+                        onClick={() => selectGoal(goal.id)}
+                        disabled={isProcessing}
+                        className={`px-4 py-2 rounded-full font-mono font-semibold text-sm transition-all duration-300 ${
+                          isSelected 
+                            ? 'bg-accent/20 text-accent border-2 border-accent shadow-neon' 
+                            : 'bg-surface/30 text-muted border border-border hover:border-accent/50 hover:text-accent'
+                        }`}
+                        style={{
+                          boxShadow: isSelected ? '0 0 10px rgba(0, 255, 255, 0.3)' : undefined
+                        }}
+                      >
+                        {goal.icon} {goal.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </CardContent>
           </Card>
