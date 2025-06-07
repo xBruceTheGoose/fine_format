@@ -81,7 +81,7 @@ const App: React.FC = () => {
           </div>
           <div className="relative">
             <p className="text-xl md:text-2xl text-accent max-w-3xl mx-auto font-semibold">
-              <span className="neon-text-secondary">Efficiently</span>{' '}
+              <span className="neon-text-accent">Efficiently</span>{' '}
               <span className="neon-text-accent">TRANSFORM</span>{' '}
               <span className="text-foreground">content from diverse document types, public URLs, and curated relevant web sources into</span>{' '}
               <span className="neon-text-secondary">HIGH-QUALITY</span>,{' '}
