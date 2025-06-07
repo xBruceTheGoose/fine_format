@@ -14,6 +14,15 @@ export interface FileData {
   status: 'pending' | 'reading' | 'read' | 'cleaning' | 'cleaned' | 'failed';
 }
 
+export interface UrlData {
+  id: string;
+  url: string;
+  title?: string;
+  rawContent: string;
+  error?: string;
+  status: 'pending' | 'fetching' | 'fetched' | 'cleaning' | 'cleaned' | 'failed';
+}
+
 export interface WebSearchResult {
   uri: string;
   title: string;
@@ -32,6 +41,7 @@ export interface ProcessedData {
   combinedCleanedText: string;
   qaPairs: QAPair[];
   sourceFileCount: number;
+  sourceUrlCount: number;
   isAugmented?: boolean;
   groundingMetadata?: GroundingMetadata;
 }

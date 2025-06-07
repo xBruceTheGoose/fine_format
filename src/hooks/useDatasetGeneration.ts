@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { FileData, ProcessedData } from '../types';
+import { FileData, UrlData, ProcessedData } from '../types';
 import { geminiService } from '../services/geminiService';
 
 interface UseDatasetGenerationReturn {
@@ -7,7 +7,7 @@ interface UseDatasetGenerationReturn {
   isProcessing: boolean;
   currentStep: string;
   error: string | null;
-  generateDataset: (files: FileData[], enableWebAugmentation: boolean) => Promise<void>;
+  generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean) => Promise<void>;
   clearError: () => void;
 }
 
@@ -23,6 +23,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
   const generateDataset = useCallback(async (
     files: FileData[],
+    urls: UrlData[],
     enableWebAugmentation: boolean
   ) => {
     if (!geminiService.isReady()) {
@@ -31,8 +32,10 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     }
 
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
-    if (readyFiles.length === 0) {
-      setError('No valid files ready for processing.');
+    const readyUrls = urls.filter(u => u.status === 'fetched' && u.rawContent.trim());
+    
+    if (readyFiles.length === 0 && readyUrls.length === 0) {
+      setError('No valid files or URLs ready for processing.');
       return;
     }
 
@@ -42,13 +45,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     setCurrentStep('Starting dataset generation...');
 
     try {
-      // Step 1: Clean content from files
+      // Step 1: Clean content from files and URLs
       const cleanedTexts: string[] = [];
-      const successfulFiles: string[] = [];
+      const successfulSources: string[] = [];
 
+      // Process files
       for (let i = 0; i < readyFiles.length; i++) {
         const file = readyFiles[i];
-        setCurrentStep(`Processing ${file.file.name} (${i + 1}/${readyFiles.length})...`);
+        setCurrentStep(`Processing file ${file.file.name} (${i + 1}/${readyFiles.length + readyUrls.length})...`);
 
         try {
           let cleanedText: string;
@@ -68,16 +72,37 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
           if (cleanedText.trim()) {
             cleanedTexts.push(cleanedText);
-            successfulFiles.push(file.file.name);
+            successfulSources.push(file.file.name);
           }
         } catch (err) {
           console.error(`Failed to process ${file.file.name}:`, err);
-          // Continue with other files
+          // Continue with other sources
+        }
+      }
+
+      // Process URLs
+      for (let i = 0; i < readyUrls.length; i++) {
+        const urlData = readyUrls[i];
+        setCurrentStep(`Processing URL ${urlData.title || urlData.url} (${readyFiles.length + i + 1}/${readyFiles.length + readyUrls.length})...`);
+
+        try {
+          const cleanedText = await geminiService.cleanTextContent(
+            urlData.rawContent,
+            urlData.title || urlData.url
+          );
+
+          if (cleanedText.trim()) {
+            cleanedTexts.push(cleanedText);
+            successfulSources.push(urlData.title || urlData.url);
+          }
+        } catch (err) {
+          console.error(`Failed to process ${urlData.url}:`, err);
+          // Continue with other sources
         }
       }
 
       if (cleanedTexts.length === 0) {
-        throw new Error('No content could be extracted from any files.');
+        throw new Error('No content could be extracted from any sources.');
       }
 
       // Step 2: Combine content
@@ -106,7 +131,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setProcessedData({
         combinedCleanedText: combinedContent,
         qaPairs,
-        sourceFileCount: successfulFiles.length,
+        sourceFileCount: readyFiles.length,
+        sourceUrlCount: readyUrls.length,
         isAugmented,
         groundingMetadata,
       });

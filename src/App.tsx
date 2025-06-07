@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Zap, Search, HelpCircle } from 'lucide-react';
-import { FileData } from './types';
+import { FileData, UrlData } from './types';
 import { geminiService } from './services/geminiService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
+import { UrlInput } from './components/UrlInput';
 import { ProcessingStatus } from './components/ProcessingStatus';
 import { DatasetPreview } from './components/DatasetPreview';
 import { Button } from './components/ui/Button';
@@ -12,6 +13,7 @@ import { Card, CardContent } from './components/ui/Card';
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
+  const [urls, setUrls] = useState<UrlData[]>([]);
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
   
   const {
@@ -25,11 +27,13 @@ const App: React.FC = () => {
 
   const isGeminiReady = geminiService.isReady();
   const readyFileCount = files.filter(f => f.status === 'read').length;
-  const canGenerate = readyFileCount > 0 && isGeminiReady && !isProcessing;
+  const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
+  const totalReadySources = readyFileCount + readyUrlCount;
+  const canGenerate = totalReadySources > 0 && isGeminiReady && !isProcessing;
 
   const handleGenerateDataset = () => {
     if (canGenerate) {
-      generateDataset(files, enableWebAugmentation);
+      generateDataset(files, urls, enableWebAugmentation);
     }
   };
 
@@ -45,7 +49,7 @@ const App: React.FC = () => {
             </h1>
           </div>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Transform your documents into high-quality Q&A datasets for AI fine-tuning
+            Transform your documents and web content into high-quality Q&A datasets for AI fine-tuning
           </p>
         </header>
 
@@ -73,6 +77,13 @@ const App: React.FC = () => {
           <FileUpload
             files={files}
             onFilesChange={setFiles}
+            disabled={isProcessing}
+          />
+
+          {/* URL Input */}
+          <UrlInput
+            urls={urls}
+            onUrlsChange={setUrls}
             disabled={isProcessing}
           />
 
@@ -118,7 +129,7 @@ const App: React.FC = () => {
             >
               {isProcessing 
                 ? 'Generating Dataset...' 
-                : `Generate Dataset (${readyFileCount} file${readyFileCount !== 1 ? 's' : ''})`
+                : `Generate Dataset (${totalReadySources} source${totalReadySources !== 1 ? 's' : ''})`
               }
             </Button>
           </div>
@@ -134,6 +145,7 @@ const App: React.FC = () => {
             <DatasetPreview
               qaPairs={processedData.qaPairs}
               sourceFileCount={processedData.sourceFileCount}
+              sourceUrlCount={processedData.sourceUrlCount}
               isAugmented={processedData.isAugmented}
               groundingMetadata={processedData.groundingMetadata}
             />
@@ -146,7 +158,7 @@ const App: React.FC = () => {
             &copy; {new Date().getFullYear()} AI Dataset Generator. Powered by Gemini AI.
           </p>
           <p className="text-gray-600 text-xs mt-1">
-            Supports: .txt, .md, .html, .jsonl, .pdf, .docx files
+            Supports: .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
           </p>
         </footer>
       </div>

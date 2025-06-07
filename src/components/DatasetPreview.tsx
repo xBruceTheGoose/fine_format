@@ -8,6 +8,7 @@ import { DownloadService } from '../services/downloadService';
 interface DatasetPreviewProps {
   qaPairs: QAPair[];
   sourceFileCount: number;
+  sourceUrlCount: number;
   isAugmented?: boolean;
   groundingMetadata?: GroundingMetadata;
 }
@@ -15,13 +16,15 @@ interface DatasetPreviewProps {
 export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   qaPairs,
   sourceFileCount,
+  sourceUrlCount,
   isAugmented = false,
   groundingMetadata,
 }) => {
   const generateFilename = (format: string) => {
     const timestamp = new Date().toISOString().split('T')[0];
     const augmentedSuffix = isAugmented ? '_augmented' : '';
-    return `dataset_${sourceFileCount}_files${augmentedSuffix}_${timestamp}.${format}`;
+    const totalSources = sourceFileCount + sourceUrlCount;
+    return `dataset_${totalSources}_sources${augmentedSuffix}_${timestamp}.${format}`;
   };
 
   const handleDownload = (format: 'csv' | 'jsonl' | 'json') => {
@@ -54,6 +57,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
 
   const previewPairs = qaPairs.slice(0, 3);
   const webSources = groundingMetadata?.groundingChunks?.filter(chunk => chunk.web?.uri) || [];
+  const totalSources = sourceFileCount + sourceUrlCount;
 
   return (
     <div className="space-y-6">
@@ -63,7 +67,9 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
             Generated Dataset Preview
           </h3>
           <p className="text-gray-400">
-            {qaPairs.length} Q&A pairs from {sourceFileCount} file{sourceFileCount !== 1 ? 's' : ''}
+            {qaPairs.length} Q&A pairs from {totalSources} source{totalSources !== 1 ? 's' : ''}
+            {sourceFileCount > 0 && ` (${sourceFileCount} file${sourceFileCount !== 1 ? 's' : ''})`}
+            {sourceUrlCount > 0 && ` (${sourceUrlCount} URL${sourceUrlCount !== 1 ? 's' : ''})`}
             {isAugmented && ' (augmented with web content)'}
           </p>
         </CardHeader>
