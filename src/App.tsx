@@ -81,11 +81,12 @@ const App: React.FC = () => {
           </div>
           <div className="relative">
             <p className="text-xl md:text-2xl text-accent max-w-3xl mx-auto font-semibold">
-              <span className="neon-text-accent">TRANSFORM</span>{' '}
-              <span className="text-foreground">your documents and web content into</span>{' '}
-              <span className="neon-text-secondary">HIGH-QUALITY</span>{' '}
-              <span className="text-foreground">Q&A datasets for AI fine-tuning with</span>{' '}
-              <span className="neon-text">100+ TARGETED PAIRS</span>
+              Efficiently <span className="neon-text-accent">TRANSFORM</span>{' '}
+              <span className="text-foreground">content from diverse document types, public URLs, and curated relevant web sources into</span>{' '}
+              <span className="neon-text-secondary">HIGH-QUALITY</span>,{' '}
+              <span className="text-foreground">domain specific</span>{' '}
+              <span className="neon-text">DATASETS</span>{' '}
+              <span className="text-foreground">for fine-tuning AI models.</span>
             </p>
             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
           </div>
