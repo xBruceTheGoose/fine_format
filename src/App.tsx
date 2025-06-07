@@ -280,7 +280,7 @@ const App: React.FC = () => {
                   <label htmlFor="gapFilling" className="text-foreground font-semibold cursor-pointer text-lg">
                     <span className="neon-text-secondary">INTELLIGENT GAP FILLING</span> with Cross-Validated Synthetic Data
                   </label>
-                  <Tooltip content="Gemini analyzes the generated Q&A dataset to identify knowledge gaps, then Nvidia Nemotron generates targeted synthetic Q&A pairs. Each synthetic pair is cross-validated by Gemini to ensure accuracy and quality before inclusion." />
+                  <Tooltip content="After generating 100 Q&A pairs from your content, Gemini analyzes the dataset to identify knowledge gaps, then Nvidia Nemotron generates 50-100 additional synthetic Q&A pairs. Each synthetic pair is cross-validated by Gemini to ensure accuracy and quality before inclusion." />
                 </div>
                 {enableGapFilling && (
                   <div className="mt-4 space-y-2">
@@ -295,6 +295,9 @@ const App: React.FC = () => {
                     </div>
                     <div className="text-accent text-sm font-mono ml-7">
                       🔍 Cross-validation by Gemini ensures quality and accuracy
+                    </div>
+                    <div className="text-warning text-sm font-mono ml-7">
+                      📊 Generates 50-100 additional Q&A pairs beyond the initial 100
                     </div>
                   </div>
                 )}
@@ -314,7 +317,7 @@ const App: React.FC = () => {
               {isProcessing 
                 ? <span className="neon-text">GENERATING DATASET...</span>
                 : <span>
-                    <span className="neon-text">GENERATE 100+ Q&A DATASET</span>
+                    <span className="neon-text">GENERATE 100{enableGapFilling && isOpenRouterReady ? '+' : ''} Q&A DATASET</span>
                     <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
                   </span>
               }

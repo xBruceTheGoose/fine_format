@@ -3,6 +3,7 @@ import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap,
 import { geminiService } from '../services/geminiService';
 import { openRouterService } from '../services/openRouterService';
 import { notificationService } from '../services/notificationService';
+import { SYNTHETIC_QA_TARGET } from '../constants';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -37,8 +38,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     const qaGenerationTime = 45; // 45 seconds for Q&A generation
     const webAugmentationTime = 60; // 60 seconds for web search and augmentation
     const gapAnalysisTime = 30; // 30 seconds for gap analysis
-    const syntheticGenerationTime = 40; // 40 seconds for synthetic generation
-    const validationTime = 35; // 35 seconds for validation
+    const syntheticGenerationTime = 50; // 50 seconds for synthetic generation (more pairs)
+    const validationTime = 45; // 45 seconds for validation (more pairs)
 
     let totalTime = sourceCount * baseTimePerSource + themeAnalysisTime + qaGenerationTime;
     
@@ -211,9 +212,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         }
       }
 
-      // Step 4: Generate initial Q&A pairs
+      // Step 4: Generate initial 100 Q&A pairs from original content
       currentStepIndex++;
-      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs...', totalSources, enableWebAugmentation, enableGapFilling);
+      updateProgress(currentStepIndex, totalSteps, 'Generating 100 comprehensive Q&A pairs from original content...', totalSources, enableWebAugmentation, enableGapFilling);
       const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
 
       let finalQAPairs: QAPair[] = [...initialQAPairs];
@@ -221,7 +222,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Step 5-7: Knowledge gap filling (if enabled and OpenRouter is available)
+      // Step 5-7: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
       if (enableGapFilling && openRouterService.isReady()) {
         try {
           // Step 5: Identify knowledge gaps using Gemini analysis of the generated dataset
@@ -236,15 +237,15 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           );
 
           if (identifiedGaps.length > 0) {
-            // Step 6: Generate synthetic Q&A pairs using OpenRouter (Nvidia Nemotron)
+            // Step 6: Generate ADDITIONAL synthetic Q&A pairs using OpenRouter (Nvidia Nemotron)
             currentStepIndex++;
-            updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
+            updateProgress(currentStepIndex, totalSteps, `Generating ${SYNTHETIC_QA_TARGET} additional synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
             
             const syntheticPairs = await openRouterService.generateSyntheticQAPairs(
               combinedContent,
               identifiedGaps,
               fineTuningGoal,
-              Math.min(30, identifiedGaps.length * 4) // Target 4 pairs per gap, max 30
+              SYNTHETIC_QA_TARGET // Target 50-100 additional pairs
             );
 
             syntheticPairCount = syntheticPairs.length;
@@ -297,7 +298,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
               }
             }
 
-            // Add validated synthetic pairs to the final dataset
+            // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original 100)
             finalQAPairs = [...initialQAPairs, ...validatedPairs];
           }
         } catch (gapFillingError) {
@@ -332,10 +333,10 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setProgress(100);
       setEstimatedTimeRemaining(0);
       
-      let completionMessage = `Successfully generated ${finalQAPairs.length} Q&A pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
+      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content + ${validatedPairCount} validated synthetic pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
       
       if (syntheticPairCount > 0) {
-        completionMessage += ` Includes ${validatedPairCount} validated synthetic pairs addressing ${identifiedGaps.length} knowledge gaps.`;
+        completionMessage += ` Knowledge gaps addressed: ${identifiedGaps.length}.`;
       }
       
       setCurrentStep(completionMessage);

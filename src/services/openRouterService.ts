@@ -1,5 +1,5 @@
 import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal } from '../types';
-import { FINE_TUNING_GOALS } from '../constants';
+import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET } from '../constants';
 
 class OpenRouterService {
   private apiKey: string | null = null;
@@ -124,25 +124,25 @@ ${content}
     }
   }
 
-  // NEW METHOD: Generate synthetic Q&A pairs based on Gemini-identified knowledge gaps
+  // Generate ADDITIONAL synthetic Q&A pairs based on Gemini-identified knowledge gaps
   public async generateSyntheticQAPairs(
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    targetCount: number = 20
+    targetCount: number = SYNTHETIC_QA_TARGET
   ): Promise<SyntheticQAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
 
     const prompt = `
-You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality training data for ${goalConfig?.name} fine-tuning.
+You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality ADDITIONAL training data for ${goalConfig?.name} fine-tuning.
 
-TASK: Generate ${targetCount} synthetic Q&A pairs that specifically address the knowledge gaps identified by advanced analysis of the existing dataset.
+CRITICAL: These are ADDITIONAL Q&A pairs to supplement an existing dataset of 100 Q&A pairs. Your goal is to generate ${targetCount} NEW synthetic pairs that fill specific knowledge gaps identified by advanced analysis.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-KNOWLEDGE GAPS TO ADDRESS (identified by Gemini analysis):
+KNOWLEDGE GAPS TO ADDRESS (identified by Gemini analysis of existing 100 Q&A pairs):
 ${knowledgeGaps.map((gap, i) => `
 ${i + 1}. GAP ID: ${gap.id}
    DESCRIPTION: ${gap.description}
@@ -153,13 +153,14 @@ ${i + 1}. GAP ID: ${gap.id}
 `).join('\n')}
 
 GENERATION REQUIREMENTS:
-1. Create approximately ${pairsPerGap} Q&A pairs per knowledge gap
-2. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
-3. Answers must be accurate, comprehensive, and based on the provided content
-4. Include both correct answers (80%) and strategically incorrect answers (20%)
-5. Vary question complexity and types based on each gap's suggested question types
-6. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
-7. Focus on filling the specific knowledge gaps rather than duplicating existing coverage
+1. Create approximately ${pairsPerGap} Q&A pairs per knowledge gap (total target: ${targetCount})
+2. These are SUPPLEMENTARY pairs - avoid duplicating coverage from the existing 100 pairs
+3. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
+4. Answers must be accurate, comprehensive, and based on the provided content
+5. Include both correct answers (80%) and strategically incorrect answers (20%)
+6. Vary question complexity and types based on each gap's suggested question types
+7. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
+8. Focus specifically on filling the identified knowledge gaps with unique perspectives
 
 QUALITY STANDARDS:
 - Questions should feel natural and user-generated
@@ -167,6 +168,7 @@ QUALITY STANDARDS:
 - Incorrect answers should be plausible but contain subtle factual errors
 - Each Q&A should clearly address its target knowledge gap
 - Maintain consistency with the fine-tuning goal throughout
+- Provide unique value beyond the existing 100 Q&A pairs
 
 For each Q&A pair, provide:
 - Natural user question targeting the specific gap
@@ -192,6 +194,8 @@ REFERENCE CONTENT:
 ---
 ${combinedContent.substring(0, 10000)}${combinedContent.length > 10000 ? '...' : ''}
 ---
+
+Generate exactly ${targetCount} additional synthetic Q&A pairs:
 
 JSON Output:
     `.trim();
