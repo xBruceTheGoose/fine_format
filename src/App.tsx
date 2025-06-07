@@ -68,10 +68,11 @@ const App: React.FC = () => {
               animation: 'glow-pulse 2s ease-in-out infinite alternate'
             }} />
             <h1 
-              className="text-5xl md:text-7xl font-black neon-text glitch font-mono tracking-wider"
+              className="text-5xl md:text-7xl font-black glitch font-mono tracking-wider"
               data-text="FINE FORMAT"
               style={{
-                textShadow: '0 0 5px #00FF41, 0 0 10px #00FF41, 0 0 15px #00FF41',
+                color: '#00FF41',
+                textShadow: '0 0 2px #00FF41, 0 0 4px #00FF41',
                 letterSpacing: '0.1em'
               }}
             >
