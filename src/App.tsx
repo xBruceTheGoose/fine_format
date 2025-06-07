@@ -217,6 +217,14 @@ const App: React.FC = () => {
             disabled={isProcessing}
           />
 
+          {/* Optional Additional Steps Header */}
+          <div className="text-center py-4">
+            <h3 className="text-2xl font-bold text-primary font-mono tracking-wide">
+              <span className="neon-text">OPTIONAL ADDITIONAL STEPS</span>
+            </h3>
+            <div className="mt-2 w-48 h-px bg-gradient-to-r from-transparent via-primary to-transparent mx-auto"></div>
+          </div>
+
           {/* Enhancement Options */}
           <Card className="cyber-card">
             <CardContent>
@@ -278,13 +286,9 @@ const App: React.FC = () => {
                       <Brain size={18} className="mr-3 animate-pulse" style={{
                         filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }} />
-                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span>   -    identifies missing coverage areas
+                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - identifies missing coverage areas
                     </div>
-                    {isDeepSeekReady ? (
-                      <div className="text-success text-sm font-mono ml-7">
-                        ✅ DeepSeek R1 integration active for enhanced gap analysis
-                      </div>
-                    ) : (
+                    {!isDeepSeekReady && (
                       <div className="text-warning text-sm font-mono ml-7">
                         ⚠️ Limited to Gemini-only analysis (add VITE_DEEPSEEK_API_KEY for full features)
                       </div>
