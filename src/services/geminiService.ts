@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
-import { QAPair, GroundingMetadata, FineTuningGoal } from '../types';
+import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair } from '../types';
 import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
 
 class GeminiService {
@@ -489,7 +489,8 @@ JSON Output:
           item.model.trim().length > 0
       ).map(pair => ({
         ...pair,
-        confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2)
+        confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
+        source: 'original' as const
       }));
 
       // Shuffle the array to randomize correct/incorrect order
@@ -498,6 +499,98 @@ JSON Output:
       return shuffledPairs;
     } catch (error: any) {
       throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  public async validateQAPair(
+    syntheticPair: SyntheticQAPair,
+    referenceContent: string,
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<ValidationResult> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+
+    const prompt = `
+You are an expert fact-checker and Q&A validator for ${goalConfig?.name} fine-tuning datasets.
+
+TASK: Validate the accuracy and quality of this synthetic Q&A pair against the reference content.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+SYNTHETIC Q&A PAIR TO VALIDATE:
+Question: ${syntheticPair.user}
+Answer: ${syntheticPair.model}
+Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
+Target Gap: ${syntheticPair.targetGap}
+
+VALIDATION CRITERIA:
+1. Factual Accuracy: Is the answer factually correct based on the reference content?
+2. Relevance: Does the Q&A pair align with the ${goalConfig?.name} objective?
+3. Quality: Is the answer comprehensive and well-structured?
+4. Consistency: Does the claimed correctness match the actual accuracy?
+5. Fine-tuning Value: Will this Q&A pair improve model performance for ${goalConfig?.promptFocus}?
+
+REFERENCE CONTENT:
+---
+${referenceContent.substring(0, 8000)}${referenceContent.length > 8000 ? '...' : ''}
+---
+
+Provide your validation as JSON:
+{
+  "isValid": boolean,
+  "confidence": number (0.0-1.0),
+  "reasoning": "Detailed explanation of validation decision",
+  "suggestedCorrection": "If invalid, suggest correction (optional)",
+  "factualAccuracy": number (0.0-1.0),
+  "relevanceScore": number (0.0-1.0)
+}
+
+JSON Output:
+    `.trim();
+
+    try {
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const validation = this.parseJsonResponse(response.text);
+
+      // Validate the response structure
+      if (typeof validation.isValid !== 'boolean' ||
+          typeof validation.confidence !== 'number' ||
+          typeof validation.reasoning !== 'string' ||
+          typeof validation.factualAccuracy !== 'number' ||
+          typeof validation.relevanceScore !== 'number') {
+        throw new Error('Invalid validation response structure');
+      }
+
+      return {
+        isValid: validation.isValid,
+        confidence: Math.max(0, Math.min(1, validation.confidence)),
+        reasoning: validation.reasoning,
+        suggestedCorrection: validation.suggestedCorrection || undefined,
+        factualAccuracy: Math.max(0, Math.min(1, validation.factualAccuracy)),
+        relevanceScore: Math.max(0, Math.min(1, validation.relevanceScore))
+      };
+
+    } catch (error: any) {
+      console.error('Q&A validation failed:', error);
+      // Return a conservative validation result on error
+      return {
+        isValid: false,
+        confidence: 0.1,
+        reasoning: `Validation failed due to error: ${error.message || 'Unknown error'}`,
+        factualAccuracy: 0.1,
+        relevanceScore: 0.1
+      };
     }
   }
 

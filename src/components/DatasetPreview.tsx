@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp, ChevronDown, FileText } from 'lucide-react';
-import { QAPair, GroundingMetadata, FineTuningMethod } from '../types';
+import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp, ChevronDown, FileText, Brain, Zap } from 'lucide-react';
+import { QAPair, GroundingMetadata, FineTuningMethod, KnowledgeGap } from '../types';
 import { Card, CardHeader, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
@@ -17,6 +17,10 @@ interface DatasetPreviewProps {
   incorrectAnswerCount: number;
   isAugmented?: boolean;
   groundingMetadata?: GroundingMetadata;
+  syntheticPairCount?: number;
+  validatedPairCount?: number;
+  identifiedGaps?: KnowledgeGap[];
+  gapFillingEnabled?: boolean;
 }
 
 export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
@@ -28,6 +32,10 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   incorrectAnswerCount,
   isAugmented = false,
   groundingMetadata,
+  syntheticPairCount = 0,
+  validatedPairCount = 0,
+  identifiedGaps = [],
+  gapFillingEnabled = false,
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<FineTuningMethod>('generic');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -37,9 +45,10 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   const generateFilename = (format: string) => {
     const timestamp = new Date().toISOString().split('T')[0];
     const augmentedSuffix = isAugmented ? '_augmented' : '';
+    const gapFilledSuffix = syntheticPairCount > 0 ? '_gapfilled' : '';
     const totalSources = sourceFileCount + sourceUrlCount;
     const methodSuffix = selectedMethod !== 'generic' ? `_${selectedMethod}` : '';
-    return `fine_format_${totalSources}_sources_${qaPairs.length}pairs${augmentedSuffix}${methodSuffix}_${timestamp}.${format}`;
+    return `fine_format_${totalSources}_sources_${qaPairs.length}pairs${augmentedSuffix}${gapFilledSuffix}${methodSuffix}_${timestamp}.${format}`;
   };
 
   const handleDownload = (format: string) => {
@@ -78,6 +87,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   const previewPairs = qaPairs.slice(0, 4);
   const webSources = groundingMetadata?.groundingChunks?.filter(chunk => chunk.web?.uri) || [];
   const totalSources = sourceFileCount + sourceUrlCount;
+  const originalPairCount = qaPairs.filter(pair => pair.source === 'original' || !pair.source).length;
 
   return (
     <div className="space-y-8">
@@ -93,16 +103,24 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
             <span className="text-accent">{totalSources} source{totalSources !== 1 ? 's' : ''}</span>
             {sourceFileCount > 0 && ` (${sourceFileCount} file${sourceFileCount !== 1 ? 's' : ''})`}
             {sourceUrlCount > 0 && ` (${sourceUrlCount} URL${sourceUrlCount !== 1 ? 's' : ''})`}
-            {isAugmented && (
-              <span className="inline-flex items-center ml-3 px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-bold border border-accent/30">
-                <Search size={14} className="mr-2" />
-                WEB ENHANCED
-              </span>
-            )}
+            <div className="flex items-center space-x-4 mt-3">
+              {isAugmented && (
+                <span className="inline-flex items-center px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-bold border border-accent/30">
+                  <Search size={14} className="mr-2" />
+                  WEB ENHANCED
+                </span>
+              )}
+              {gapFillingEnabled && syntheticPairCount > 0 && (
+                <span className="inline-flex items-center px-3 py-1 bg-secondary/20 text-secondary rounded-full text-sm font-bold border border-secondary/30">
+                  <Brain size={14} className="mr-2" />
+                  GAP FILLED
+                </span>
+              )}
+            </div>
           </p>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="cyber-alert-success border-success rounded-lg p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -130,7 +148,89 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                 <Target size={32} className="text-accent" style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }} />
               </div>
             </div>
+            {syntheticPairCount > 0 && (
+              <div className="cyber-alert-info border-secondary rounded-lg p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-secondary font-bold text-2xl font-mono">{validatedPairCount}</p>
+                    <p className="text-secondary font-semibold font-mono tracking-wide">SYNTHETIC PAIRS</p>
+                  </div>
+                  <Zap size={32} className="text-secondary" style={{ filter: 'drop-shadow(0 0 5px #FF0080)' }} />
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Dataset Composition */}
+          {syntheticPairCount > 0 && (
+            <div className="mb-8 p-4 bg-surface/30 rounded-lg border border-border">
+              <h4 className="text-lg font-bold text-primary mb-3 flex items-center font-mono tracking-wide">
+                <Brain size={20} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
+                DATASET COMPOSITION
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-mono">
+                <div>
+                  <span className="text-primary font-bold">Original Q&A:</span>
+                  <span className="text-foreground ml-2">{originalPairCount} pairs</span>
+                </div>
+                <div>
+                  <span className="text-secondary font-bold">Synthetic Generated:</span>
+                  <span className="text-foreground ml-2">{syntheticPairCount} pairs</span>
+                </div>
+                <div>
+                  <span className="text-success font-bold">Cross-Validated:</span>
+                  <span className="text-foreground ml-2">{validatedPairCount} pairs included</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Knowledge Gaps Addressed */}
+          {identifiedGaps.length > 0 && (
+            <div className="mb-8">
+              <h4 className="text-xl font-bold text-primary mb-4 flex items-center font-mono tracking-wide">
+                <Brain size={24} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
+                KNOWLEDGE GAPS ADDRESSED ({identifiedGaps.length})
+              </h4>
+              <div className="space-y-3">
+                {identifiedGaps.map((gap, index) => (
+                  <div
+                    key={gap.id}
+                    className="p-4 bg-surface/50 rounded-lg border border-border"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(255, 0, 128, 0.05), rgba(255, 0, 128, 0.02))'
+                    }}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <span className={`px-2 py-1 rounded text-xs font-bold font-mono ${
+                            gap.priority === 'high' ? 'bg-error/20 text-error' :
+                            gap.priority === 'medium' ? 'bg-warning/20 text-warning' :
+                            'bg-accent/20 text-accent'
+                          }`}>
+                            {gap.priority.toUpperCase()}
+                          </span>
+                          <span className="text-accent font-semibold font-mono">{gap.theme}</span>
+                        </div>
+                        <p className="text-foreground font-mono text-sm leading-relaxed">{gap.description}</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {gap.suggestedQuestionTypes.map((type, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-1 bg-primary/10 text-primary rounded text-xs font-mono"
+                            >
+                              {type}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Identified Themes */}
           {identifiedThemes.length > 0 && (
@@ -174,6 +274,11 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-3 ml-6">
+                    {pair.source === 'synthetic' && (
+                      <span className="text-xs px-2 py-1 bg-secondary/20 text-secondary rounded font-bold font-mono border border-secondary/30">
+                        SYNTHETIC
+                      </span>
+                    )}
                     {pair.isCorrect ? (
                       <CheckCircle size={20} className="text-success" style={{ filter: 'drop-shadow(0 0 3px #00FF41)' }} />
                     ) : (
@@ -196,6 +301,14 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     {pair.confidence && (
                       <p className="text-accent font-bold font-mono mt-2 tracking-wide">
                         CONFIDENCE: {(pair.confidence * 100).toFixed(0)}%
+                      </p>
+                    )}
+                    {pair.validationStatus && pair.source === 'synthetic' && (
+                      <p className={`font-bold font-mono mt-2 tracking-wide ${
+                        pair.validationStatus === 'validated' ? 'text-success' : 'text-warning'
+                      }`}>
+                        VALIDATION: {pair.validationStatus.toUpperCase()}
+                        {pair.validationConfidence && ` (${(pair.validationConfidence * 100).toFixed(0)}%)`}
                       </p>
                     )}
                   </div>
@@ -356,7 +469,8 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           <div className="mt-6 p-4 bg-surface/30 rounded-lg border border-border">
             <p className="text-accent font-semibold font-mono leading-relaxed">
               <strong className="text-primary">{selectedConfig?.name} FORMAT:</strong> Each Q&A pair includes correctness labels and confidence scores optimized for {selectedConfig?.name}. 
-              Incorrect answers are strategically included to improve model discrimination and reduce hallucination.
+              {syntheticPairCount > 0 && ` Includes ${validatedPairCount} cross-validated synthetic pairs addressing knowledge gaps.`}
+              {' '}Incorrect answers are strategically included to improve model discrimination and reduce hallucination.
             </p>
           </div>
         </CardContent>

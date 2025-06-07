@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { FileData, UrlData, ProcessedData, FineTuningGoal } from '../types';
+import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
+import { deepseekService } from '../services/deepseekService';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -8,7 +9,7 @@ interface UseDatasetGenerationReturn {
   currentStep: string;
   progress: number;
   error: string | null;
-  generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean, fineTuningGoal: FineTuningGoal) => Promise<void>;
+  generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean, fineTuningGoal: FineTuningGoal, enableGapFilling?: boolean) => Promise<void>;
   clearError: () => void;
 }
 
@@ -33,7 +34,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     files: FileData[],
     urls: UrlData[],
     enableWebAugmentation: boolean,
-    fineTuningGoal: FineTuningGoal
+    fineTuningGoal: FineTuningGoal,
+    enableGapFilling: boolean = true
   ) => {
     if (!geminiService.isReady()) {
       setError('Gemini service is not initialized. Please check your API key.');
@@ -55,7 +57,12 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
     try {
       const totalSources = readyFiles.length + readyUrls.length;
-      const totalSteps = totalSources + (enableWebAugmentation ? 4 : 2); // +1 for theme identification, +1 for Q&A generation, +2 for web search
+      
+      // Calculate total steps based on enabled features
+      let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
+      if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
+      if (enableGapFilling && deepseekService.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
+      
       let currentStepIndex = 0;
 
       // Step 1: Clean content from files and URLs
@@ -150,17 +157,108 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         }
       }
 
-      // Final step: Generate comprehensive Q&A pairs
+      // Step 4: Generate initial Q&A pairs
       currentStepIndex++;
-      updateProgress(currentStepIndex, totalSteps, 'Generating 100+ intelligent Q&A pairs with correct and incorrect answers...');
-      const qaPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
+      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs...');
+      const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
 
-      const correctAnswers = qaPairs.filter(pair => pair.isCorrect);
-      const incorrectAnswers = qaPairs.filter(pair => !pair.isCorrect);
+      let finalQAPairs: QAPair[] = [...initialQAPairs];
+      let identifiedGaps: KnowledgeGap[] = [];
+      let syntheticPairCount = 0;
+      let validatedPairCount = 0;
+
+      // Step 5-7: Knowledge gap filling (if enabled and DeepSeek is available)
+      if (enableGapFilling && deepseekService.isReady()) {
+        try {
+          // Step 5: Identify knowledge gaps
+          currentStepIndex++;
+          updateProgress(currentStepIndex, totalSteps, 'Analyzing dataset for knowledge gaps...');
+          
+          identifiedGaps = await deepseekService.identifyKnowledgeGaps(
+            combinedContent,
+            identifiedThemes,
+            initialQAPairs,
+            fineTuningGoal
+          );
+
+          if (identifiedGaps.length > 0) {
+            // Step 6: Generate synthetic Q&A pairs
+            currentStepIndex++;
+            updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`);
+            
+            const syntheticPairs = await deepseekService.generateSyntheticQAPairs(
+              combinedContent,
+              identifiedGaps,
+              fineTuningGoal,
+              Math.min(30, identifiedGaps.length * 4) // Target 4 pairs per gap, max 30
+            );
+
+            syntheticPairCount = syntheticPairs.length;
+
+            // Step 7: Cross-validate synthetic pairs
+            currentStepIndex++;
+            updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`);
+            
+            const validatedPairs: QAPair[] = [];
+            const validationThreshold = 0.7; // Minimum confidence for inclusion
+
+            for (let i = 0; i < syntheticPairs.length; i++) {
+              try {
+                const validation = await geminiService.validateQAPair(
+                  syntheticPairs[i],
+                  combinedContent,
+                  fineTuningGoal
+                );
+
+                // Update the synthetic pair with validation results
+                const validatedPair: QAPair = {
+                  ...syntheticPairs[i],
+                  validationStatus: validation.isValid && validation.confidence >= validationThreshold ? 'validated' : 'rejected',
+                  validationConfidence: validation.confidence,
+                  confidence: validation.isValid ? 
+                    Math.min(syntheticPairs[i].confidence || 0.9, validation.factualAccuracy) :
+                    Math.max(0.1, validation.factualAccuracy * 0.5)
+                };
+
+                // Only include pairs that pass validation
+                if (validation.isValid && validation.confidence >= validationThreshold) {
+                  validatedPairs.push(validatedPair);
+                  validatedPairCount++;
+                }
+
+                // Update progress for each validation
+                if (i % 5 === 0 || i === syntheticPairs.length - 1) {
+                  updateProgress(
+                    currentStepIndex, 
+                    totalSteps, 
+                    `Cross-validating synthetic Q&A pairs... (${i + 1}/${syntheticPairs.length}, ${validatedPairCount} validated)`
+                  );
+                }
+              } catch (validationError) {
+                console.error(`Validation failed for synthetic pair ${i}:`, validationError);
+                // Continue with other pairs
+              }
+            }
+
+            // Add validated synthetic pairs to the final dataset
+            finalQAPairs = [...initialQAPairs, ...validatedPairs];
+          }
+        } catch (gapFillingError) {
+          console.error('Knowledge gap filling failed:', gapFillingError);
+          // Continue with original Q&A pairs only
+          setError('Knowledge gap filling encountered issues, proceeding with original dataset.');
+        }
+      } else if (enableGapFilling && !deepseekService.isReady()) {
+        console.warn('Knowledge gap filling requested but DeepSeek service not available');
+      }
+
+      // Calculate final statistics
+      const correctAnswers = finalQAPairs.filter(pair => pair.isCorrect);
+      const incorrectAnswers = finalQAPairs.filter(pair => !pair.isCorrect);
 
       setProcessedData({
         combinedCleanedText: combinedContent,
-        qaPairs,
+        qaPairs: finalQAPairs,
         sourceFileCount: readyFiles.length,
         sourceUrlCount: readyUrls.length,
         identifiedThemes,
@@ -168,10 +266,21 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         groundingMetadata,
         correctAnswerCount: correctAnswers.length,
         incorrectAnswerCount: incorrectAnswers.length,
+        syntheticPairCount,
+        validatedPairCount,
+        identifiedGaps,
+        gapFillingEnabled: enableGapFilling && deepseekService.isReady()
       });
 
       setProgress(100);
-      setCurrentStep(`Successfully generated ${qaPairs.length} Q&A pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`);
+      
+      let completionMessage = `Successfully generated ${finalQAPairs.length} Q&A pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
+      
+      if (syntheticPairCount > 0) {
+        completionMessage += ` Includes ${validatedPairCount} validated synthetic pairs addressing ${identifiedGaps.length} knowledge gaps.`;
+      }
+      
+      setCurrentStep(completionMessage);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);

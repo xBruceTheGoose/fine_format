@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target } from 'lucide-react';
+import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
+import { deepseekService } from './services/deepseekService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
@@ -17,6 +18,7 @@ const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
   const [urls, setUrls] = useState<UrlData[]>([]);
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
+  const [enableGapFilling, setEnableGapFilling] = useState(true);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   
   const {
@@ -30,6 +32,7 @@ const App: React.FC = () => {
   } = useDatasetGeneration();
 
   const isGeminiReady = geminiService.isReady();
+  const isDeepSeekReady = deepseekService.isReady();
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
@@ -37,7 +40,7 @@ const App: React.FC = () => {
 
   const handleGenerateDataset = () => {
     if (canGenerate) {
-      generateDataset(files, urls, enableWebAugmentation, fineTuningGoal);
+      generateDataset(files, urls, enableWebAugmentation, fineTuningGoal, enableGapFilling);
     }
   };
 
@@ -100,6 +103,15 @@ const App: React.FC = () => {
               type="warning"
               title="API KEY REQUIRED"
               message="Please set your Gemini API key in the .env.local file and restart the development server."
+            />
+          )}
+
+          {/* DeepSeek Info */}
+          {!isDeepSeekReady && (
+            <Alert
+              type="info"
+              title="ENHANCED FEATURES AVAILABLE"
+              message="Add VITE_DEEPSEEK_API_KEY to .env.local to enable knowledge gap analysis and synthetic dataset generation for even higher quality results."
             />
           )}
 
@@ -205,37 +217,81 @@ const App: React.FC = () => {
             disabled={isProcessing}
           />
 
-          {/* Web Augmentation Option */}
+          {/* Enhancement Options */}
           <Card className="cyber-card">
             <CardContent>
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    id="webAugmentation"
-                    checked={enableWebAugmentation}
-                    onChange={(e) => setEnableWebAugmentation(e.target.checked)}
-                    disabled={isProcessing || !isGeminiReady}
-                    className="h-6 w-6 rounded border-2 border-primary bg-surface text-primary focus:ring-primary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
-                    style={{
-                      accentColor: '#00FF41',
-                      filter: 'drop-shadow(0 0 3px #00FF41)'
-                    }}
-                  />
+              <div className="space-y-4">
+                {/* Web Augmentation */}
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      id="webAugmentation"
+                      checked={enableWebAugmentation}
+                      onChange={(e) => setEnableWebAugmentation(e.target.checked)}
+                      disabled={isProcessing || !isGeminiReady}
+                      className="h-6 w-6 rounded border-2 border-primary bg-surface text-primary focus:ring-primary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
+                      style={{
+                        accentColor: '#00FF41',
+                        filter: 'drop-shadow(0 0 3px #00FF41)'
+                      }}
+                    />
+                  </div>
+                  <label htmlFor="webAugmentation" className="text-foreground font-semibold cursor-pointer text-lg">
+                    <span className="neon-text">ENHANCE</span> with Targeted Web Content
+                  </label>
+                  <Tooltip content="AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
                 </div>
-                <label htmlFor="webAugmentation" className="text-foreground font-semibold cursor-pointer text-lg">
-                  <span className="neon-text">ENHANCE</span> with Targeted Web Content
-                </label>
-                <Tooltip content="AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
+                {enableWebAugmentation && (
+                  <div className="mt-4 flex items-center text-accent font-medium">
+                    <Search size={18} className="mr-3 animate-pulse" style={{
+                      filter: 'drop-shadow(0 0 3px #00FFFF)'
+                    }} />
+                    <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> will enhance content quality and coverage
+                  </div>
+                )}
+
+                {/* Knowledge Gap Filling */}
+                <div className="flex items-center space-x-4 pt-4 border-t border-border">
+                  <div className="relative">
+                    <input
+                      type="checkbox"
+                      id="gapFilling"
+                      checked={enableGapFilling}
+                      onChange={(e) => setEnableGapFilling(e.target.checked)}
+                      disabled={isProcessing || !isGeminiReady}
+                      className="h-6 w-6 rounded border-2 border-secondary bg-surface text-secondary focus:ring-secondary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
+                      style={{
+                        accentColor: '#FF0080',
+                        filter: 'drop-shadow(0 0 3px #FF0080)'
+                      }}
+                    />
+                  </div>
+                  <label htmlFor="gapFilling" className="text-foreground font-semibold cursor-pointer text-lg">
+                    <span className="neon-text-secondary">INTELLIGENT GAP FILLING</span> with Cross-Validated Synthetic Data
+                  </label>
+                  <Tooltip content="Advanced AI analysis identifies knowledge gaps in your dataset and generates additional synthetic Q&A pairs. Each synthetic pair is cross-validated by multiple AI models to ensure accuracy and quality before inclusion." />
+                </div>
+                {enableGapFilling && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center text-secondary font-medium">
+                      <Brain size={18} className="mr-3 animate-pulse" style={{
+                        filter: 'drop-shadow(0 0 3px #FF0080)'
+                      }} />
+                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> identifies missing coverage areas
+                    </div>
+                    {isDeepSeekReady ? (
+                      <div className="text-success text-sm font-mono ml-7">
+                        ✅ DeepSeek R1 integration active for enhanced gap analysis
+                      </div>
+                    ) : (
+                      <div className="text-warning text-sm font-mono ml-7">
+                        ⚠️ Limited to Gemini-only analysis (add VITE_DEEPSEEK_API_KEY for full features)
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              {enableWebAugmentation && (
-                <div className="mt-4 flex items-center text-accent font-medium">
-                  <Search size={18} className="mr-3 animate-pulse" style={{
-                    filter: 'drop-shadow(0 0 3px #00FFFF)'
-                  }} />
-                  <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> will enhance content quality and coverage
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -276,6 +332,10 @@ const App: React.FC = () => {
               incorrectAnswerCount={processedData.incorrectAnswerCount}
               isAugmented={processedData.isAugmented}
               groundingMetadata={processedData.groundingMetadata}
+              syntheticPairCount={processedData.syntheticPairCount}
+              validatedPairCount={processedData.validatedPairCount}
+              identifiedGaps={processedData.identifiedGaps}
+              gapFillingEnabled={processedData.gapFillingEnabled}
             />
           )}
         </div>

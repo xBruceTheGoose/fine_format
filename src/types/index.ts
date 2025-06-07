@@ -3,6 +3,34 @@ export interface QAPair {
   model: string;
   isCorrect: boolean; // true for correct answers, false for incorrect
   confidence?: number; // confidence score for the answer quality
+  source?: 'original' | 'synthetic'; // Track if Q&A is original or synthetic
+  validationStatus?: 'pending' | 'validated' | 'rejected' | 'failed';
+  validationConfidence?: number; // Cross-validation confidence score
+  knowledgeGap?: string; // Which knowledge gap this addresses
+}
+
+export interface KnowledgeGap {
+  id: string;
+  description: string;
+  theme: string;
+  priority: 'high' | 'medium' | 'low';
+  suggestedQuestionTypes: string[];
+  relatedConcepts: string[];
+}
+
+export interface SyntheticQAPair extends Omit<QAPair, 'source'> {
+  source: 'synthetic';
+  targetGap: string;
+  generationReasoning?: string;
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  confidence: number;
+  reasoning: string;
+  suggestedCorrection?: string;
+  factualAccuracy: number;
+  relevanceScore: number;
 }
 
 export interface FileData {
@@ -49,6 +77,10 @@ export interface ProcessedData {
   groundingMetadata?: GroundingMetadata;
   correctAnswerCount: number;
   incorrectAnswerCount: number;
+  syntheticPairCount?: number;
+  validatedPairCount?: number;
+  identifiedGaps?: KnowledgeGap[];
+  gapFillingEnabled?: boolean;
 }
 
 export interface StandardFormatMessage {
