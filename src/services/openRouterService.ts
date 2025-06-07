@@ -2,23 +2,49 @@ import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal } from '../types'
 import { FINE_TUNING_GOALS } from '../constants';
 
 class OpenRouterService {
-  private baseUrl = '/api/openrouter'; // Use local API endpoint
-  private isInitialized = true; // Always available since it uses server-side keys
+  private apiKey: string | null = null;
+  private isInitialized = false;
+  private baseUrl = 'https://openrouter.ai/api/v1/chat/completions';
+
+  constructor() {
+    this.initialize();
+  }
+
+  private initialize(): void {
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    
+    if (!apiKey?.trim()) {
+      console.error('OpenRouter API key not found in environment variables');
+      return;
+    }
+
+    this.apiKey = apiKey.trim();
+    this.isInitialized = true;
+  }
 
   public isReady(): boolean {
-    return this.isInitialized;
+    return this.isInitialized && this.apiKey !== null;
   }
 
   private async makeRequest(messages: Array<{ role: string; content: string }>, temperature = 0.7): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/chat`, {
+    if (!this.apiKey) {
+      throw new Error('OpenRouter service not initialized');
+    }
+
+    const response = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Fine Format - AI Dataset Generator',
       },
       body: JSON.stringify({
+        model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
         messages,
         temperature,
         max_tokens: 4000,
+        stream: false,
       }),
     });
 
@@ -29,11 +55,11 @@ class OpenRouterService {
 
     const data = await response.json();
     
-    if (!data.content) {
+    if (!data.choices?.[0]?.message?.content) {
       throw new Error('Invalid response from OpenRouter API');
     }
 
-    return data.content;
+    return data.choices[0].message.content;
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -51,6 +77,50 @@ class OpenRouterService {
     } catch (error) {
       console.error('Failed to parse JSON response from OpenRouter:', error);
       throw new Error(`Invalid JSON response from OpenRouter: ${responseText.substring(0, 200)}...`);
+    }
+  }
+
+  public async cleanContent(
+    content: string,
+    fileName: string,
+    contentType: 'text' | 'url' | 'multimodal' = 'text'
+  ): Promise<string> {
+    const prompt = `
+You are an expert content cleaning specialist using advanced AI to extract and clean textual content.
+
+TASK: Clean and extract the most relevant textual content from the provided source.
+
+SOURCE: ${fileName} (${contentType})
+
+CLEANING REQUIREMENTS:
+1. Extract ONLY the core textual information that would be valuable for AI training
+2. Remove advertisements, navigation elements, headers, footers, and boilerplate content
+3. Preserve code blocks, examples, and technical content that relate to the main subject matter
+4. Maintain the logical structure and flow of information
+5. Remove redundant or repetitive content
+6. Keep instructional content, tutorials, and educational material
+7. Preserve important formatting context (like lists, steps, procedures)
+8. Return clean, readable text without metadata or commentary
+
+IMPORTANT: If the content includes code blocks, examples, or technical instructions that are part of the main educational or informational content, RETAIN them as they are valuable for training.
+
+Return ONLY the cleaned text content without any commentary, explanations, or metadata.
+
+CONTENT TO CLEAN:
+---
+${content}
+---
+    `.trim();
+
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: prompt }
+      ], 0.3); // Lower temperature for more consistent cleaning
+
+      return response.trim();
+    } catch (error: any) {
+      console.error('Content cleaning failed:', error);
+      throw new Error(`Content cleaning failed: ${error.message || 'Unknown error'}`);
     }
   }
 
