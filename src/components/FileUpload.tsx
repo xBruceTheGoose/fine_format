@@ -123,8 +123,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 <p className="text-accent font-semibold mt-2 font-mono">
                   SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>
-                <p className="text-muted text-sm mt-1 font-mono">
-                  MAXIMUM FILE SIZE: 5MB
+                <p className="text-warning text-sm mt-1 font-mono font-bold">
+                  MAXIMUM FILE SIZE: 5MB PER FILE
                 </p>
               </div>
             </div>

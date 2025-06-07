@@ -278,14 +278,14 @@ const App: React.FC = () => {
         {/* Footer */}
         <footer className="text-center mt-20 pt-8 border-t border-border relative">
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
-          <p className="text-muted text-sm font-mono mb-2">
-            &copy; {new Date().getFullYear()} <span className="neon-text">FINE FORMAT</span>. 
-            <span className="text-accent ml-2">POWERED BY GEMINI AI</span>
+          <p className="text-gray-400 text-sm font-mono mb-2">
+            &copy; {new Date().getFullYear()} DappGoose Labs DAO. 
+            <span className="text-accent ml-2">POWERED BY LEADING AI MODELS</span>
           </p>
-          <p className="text-muted text-xs mb-3 font-mono">
+          <p className="text-gray-400 text-xs mb-3 font-mono">
             <span className="text-primary">SUPPORTS:</span> .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
           </p>
-          <p className="text-muted text-sm font-mono">
+          <p className="text-gray-400 text-sm font-mono">
             Made with <span className="text-secondary neon-text-secondary">{'<3'}</span> and{' '}
             <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
             <span className="text-foreground">brucethegoose.eth</span>
