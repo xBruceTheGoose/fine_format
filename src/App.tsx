@@ -77,6 +77,12 @@ const App: React.FC = () => {
   const currentGoal = FINE_TUNING_GOALS[currentGoalIndex];
   const IconComponent = getGoalIcon(currentGoal.id);
 
+  // Get previous and next goals for carousel display
+  const prevGoalIndex = currentGoalIndex === 0 ? FINE_TUNING_GOALS.length - 1 : currentGoalIndex - 1;
+  const nextGoalIndex = (currentGoalIndex + 1) % FINE_TUNING_GOALS.length;
+  const prevGoal = FINE_TUNING_GOALS[prevGoalIndex];
+  const nextGoal = FINE_TUNING_GOALS[nextGoalIndex];
+
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden">
       {/* Cyberpunk background effects */}
@@ -164,64 +170,104 @@ const App: React.FC = () => {
                 <Tooltip content="Choose the primary focus for your dataset generation. This determines how the AI will analyze your content and generate Q&A pairs optimized for your specific fine-tuning objectives." />
               </div>
               <p className="text-accent font-semibold mt-2 font-mono">
-                <span className="neon-text-accent">SWIPE OR CLICK</span> to explore different objectives
+                <span className="neon-text-accent">NAVIGATE</span> through different objectives using arrows or click cards
               </p>
             </CardHeader>
             <CardContent>
               {/* Carousel Container */}
               <div className="relative">
-                {/* Main Goal Display */}
-                <div className="relative overflow-hidden rounded-lg">
-                  <div 
-                    className="p-8 rounded-lg border-2 border-accent bg-accent/10 shadow-neon relative overflow-hidden transition-all duration-500"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(0, 255, 255, 0.12), rgba(0, 255, 255, 0.06))',
-                      boxShadow: '0 0 30px rgba(0, 255, 255, 0.4), inset 0 0 30px rgba(0, 255, 255, 0.08)',
-                      minHeight: '200px'
-                    }}
-                  >
-                    {/* Selection Indicator */}
-                    <div className="absolute top-4 right-4">
-                      <div className="w-4 h-4 bg-accent rounded-full animate-pulse"
-                           style={{ boxShadow: '0 0 8px #00FFFF' }} />
+                {/* Carousel Display */}
+                <div className="relative h-80 overflow-hidden">
+                  <div className="flex items-center justify-center h-full relative">
+                    
+                    {/* Previous Goal Card (Left) */}
+                    <div 
+                      className="absolute left-0 w-64 h-64 cursor-pointer transition-all duration-500 transform -translate-x-8 scale-75 opacity-60 hover:opacity-80 hover:scale-80"
+                      onClick={() => selectGoal(prevGoal.id)}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))',
+                        border: '1px solid rgba(102, 102, 102, 0.3)',
+                        borderRadius: '12px',
+                        zIndex: 1
+                      }}
+                    >
+                      <div className="p-6 h-full flex flex-col items-center justify-center text-center">
+                        <div className="text-4xl mb-3">{prevGoal.icon}</div>
+                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{prevGoal.name}</h4>
+                        <p className="text-muted text-sm font-mono leading-tight">{prevGoal.description.substring(0, 80)}...</p>
+                      </div>
                     </div>
 
-                    {/* Goal Content */}
-                    <div className="flex items-start space-x-6">
-                      <div className="flex flex-col items-center space-y-3">
-                        <div className="text-6xl">{currentGoal.icon}</div>
-                        <IconComponent 
-                          size={32} 
-                          className="text-accent"
-                          style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
-                        />
+                    {/* Current Goal Card (Center) */}
+                    <div 
+                      className="w-80 h-72 relative z-10 transition-all duration-500"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(0, 255, 255, 0.12), rgba(0, 255, 255, 0.06))',
+                        border: '2px solid #00FFFF',
+                        borderRadius: '16px',
+                        boxShadow: '0 0 30px rgba(0, 255, 255, 0.4), inset 0 0 30px rgba(0, 255, 255, 0.08)'
+                      }}
+                    >
+                      {/* Selection Indicator */}
+                      <div className="absolute top-4 right-4">
+                        <div className="w-4 h-4 bg-accent rounded-full animate-pulse"
+                             style={{ boxShadow: '0 0 8px #00FFFF' }} />
                       </div>
-                      <div className="flex-1">
-                        <h4 className="neon-text-accent font-bold text-2xl mb-3 font-mono tracking-wide">
+
+                      {/* Goal Content */}
+                      <div className="p-6 h-full flex flex-col justify-center">
+                        <div className="flex items-center justify-center space-x-4 mb-4">
+                          <div className="text-5xl">{currentGoal.icon}</div>
+                          <IconComponent 
+                            size={36} 
+                            className="text-accent"
+                            style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                          />
+                        </div>
+                        <h4 className="neon-text-accent font-bold text-xl mb-3 font-mono tracking-wide text-center">
                           {currentGoal.name}
                         </h4>
-                        <p className="text-foreground text-lg mb-4 font-mono leading-relaxed">
+                        <p className="text-foreground text-sm mb-4 font-mono leading-relaxed text-center">
                           {currentGoal.description}
                         </p>
                         <div className="p-3 bg-surface/40 rounded-lg border border-accent/30">
-                          <p className="text-accent text-sm font-mono">
+                          <p className="text-accent text-xs font-mono text-center">
                             <span className="neon-text-accent font-bold">FOCUS:</span>{' '}
                             {currentGoal.promptFocus}
                           </p>
                         </div>
                       </div>
+
+                      {/* Animated background effect */}
+                      <div className="absolute inset-0 pointer-events-none rounded-16">
+                        <div 
+                          className="absolute top-0 left-0 right-0 h-px bg-accent opacity-70"
+                          style={{
+                            animation: 'scanline 3s linear infinite',
+                            boxShadow: '0 0 5px #00FFFF'
+                          }}
+                        />
+                      </div>
                     </div>
 
-                    {/* Animated background effect */}
-                    <div className="absolute inset-0 pointer-events-none">
-                      <div 
-                        className="absolute top-0 left-0 right-0 h-px bg-accent opacity-70"
-                        style={{
-                          animation: 'scanline 3s linear infinite',
-                          boxShadow: '0 0 5px #00FFFF'
-                        }}
-                      />
+                    {/* Next Goal Card (Right) */}
+                    <div 
+                      className="absolute right-0 w-64 h-64 cursor-pointer transition-all duration-500 transform translate-x-8 scale-75 opacity-60 hover:opacity-80 hover:scale-80"
+                      onClick={() => selectGoal(nextGoal.id)}
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))',
+                        border: '1px solid rgba(102, 102, 102, 0.3)',
+                        borderRadius: '12px',
+                        zIndex: 1
+                      }}
+                    >
+                      <div className="p-6 h-full flex flex-col items-center justify-center text-center">
+                        <div className="text-4xl mb-3">{nextGoal.icon}</div>
+                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{nextGoal.name}</h4>
+                        <p className="text-muted text-sm font-mono leading-tight">{nextGoal.description.substring(0, 80)}...</p>
+                      </div>
                     </div>
+
                   </div>
                 </div>
 
@@ -231,7 +277,7 @@ const App: React.FC = () => {
                   <button
                     onClick={prevGoal}
                     disabled={isProcessing}
-                    className="flex items-center space-x-2 px-4 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-2 px-6 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
                     }}
@@ -264,7 +310,7 @@ const App: React.FC = () => {
                   <button
                     onClick={nextGoal}
                     disabled={isProcessing}
-                    className="flex items-center space-x-2 px-4 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center space-x-2 px-6 py-3 bg-surface/50 hover:bg-surface/70 border border-border hover:border-accent/50 rounded-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
                       background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
                     }}
