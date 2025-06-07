@@ -50,12 +50,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
       
       {isVisible && (
         <div className={`absolute z-[9999] ${positionClasses[position]}`}>
-          <div className="px-4 py-3 bg-surface text-foreground text-sm rounded-lg shadow-lg max-w-xs whitespace-normal border border-border font-mono"
+          <div className="px-6 py-4 bg-surface text-foreground text-sm rounded-lg shadow-lg max-w-md w-80 whitespace-normal border border-border font-mono leading-relaxed"
                style={{
                  background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.98), rgba(26, 26, 26, 0.95))',
                  backdropFilter: 'blur(10px)',
                  boxShadow: '0 0 15px rgba(0, 255, 65, 0.2), 0 8px 32px rgba(0, 0, 0, 0.4)',
-                 border: '1px solid rgba(0, 255, 65, 0.3)'
+                 border: '1px solid rgba(0, 255, 65, 0.3)',
+                 minHeight: 'auto'
                }}>
             {content}
           </div>
