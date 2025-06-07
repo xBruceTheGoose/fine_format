@@ -49,13 +49,13 @@ export const Tooltip: React.FC<TooltipProps> = ({
       </div>
       
       {isVisible && (
-        <div className={`absolute z-50 ${positionClasses[position]}`}>
+        <div className={`absolute z-[9999] ${positionClasses[position]}`}>
           <div className="px-4 py-3 bg-surface text-foreground text-sm rounded-lg shadow-lg max-w-xs whitespace-normal border border-border font-mono"
                style={{
-                 background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(26, 26, 26, 0.9))',
+                 background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.98), rgba(26, 26, 26, 0.95))',
                  backdropFilter: 'blur(10px)',
-                 boxShadow: '0 0 10px rgba(0, 255, 65, 0.15), 0 8px 32px rgba(0, 0, 0, 0.3)',
-                 border: '1px solid rgba(0, 255, 65, 0.2)'
+                 boxShadow: '0 0 15px rgba(0, 255, 65, 0.2), 0 8px 32px rgba(0, 0, 0, 0.4)',
+                 border: '1px solid rgba(0, 255, 65, 0.3)'
                }}>
             {content}
           </div>

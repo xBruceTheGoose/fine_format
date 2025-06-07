@@ -118,7 +118,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                   <p className={`text-xl font-bold font-mono tracking-wide ${isDragging ? 'neon-text' : 'text-foreground'}`}>
                     {isDragging ? 'DROP FILES HERE' : 'DROP FILES OR CLICK TO BROWSE'}
                   </p>
-                  <Tooltip content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." />
+                  <Tooltip 
+                    content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." 
+                    position="top"
+                    className="z-50"
+                  />
                 </div>
                 <p className="text-accent font-semibold mt-2 font-mono">
                   SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
