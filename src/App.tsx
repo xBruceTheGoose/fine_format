@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Zap, Search, HelpCircle, Flag, BookOpen, PenTool } from 'lucide-react';
+import { Zap, Search, HelpCircle, FlagOff, BookOpen, PenTool, Target } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
@@ -43,10 +43,10 @@ const App: React.FC = () => {
 
   const getGoalIcon = (goalId: FineTuningGoal) => {
     switch (goalId) {
-      case 'topic': return Flag;
+      case 'topic': return Target;
       case 'knowledge': return BookOpen;
       case 'style': return PenTool;
-      default: return Flag;
+      default: return Target;
     }
   };
 
@@ -118,7 +118,7 @@ const App: React.FC = () => {
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <h3 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
-                  <Flag 
+                  <FlagOff 
                     size={24} 
                     className="mr-3 text-accent" 
                     style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
