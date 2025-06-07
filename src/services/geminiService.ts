@@ -1,6 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
-import { QAPair, GroundingMetadata } from '../types';
-import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
+import { QAPair, GroundingMetadata, FineTuningGoal } from '../types';
+import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
 
 class GeminiService {
   private ai: GoogleGenAI | null = null;
@@ -49,27 +49,133 @@ class GeminiService {
     }
   }
 
+  private getGoalSpecificPromptGuidance(goal: FineTuningGoal): string {
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === goal);
+    
+    switch (goal) {
+      case 'topic':
+        return `
+Focus on identifying themes that represent:
+- Main subject areas and topics discussed
+- Key concepts and their relationships
+- Categorical knowledge domains
+- Thematic patterns and recurring subjects
+- Conceptual frameworks and theoretical foundations
+
+Prioritize themes that would help an AI understand the core topics and subject matter.`;
+
+      case 'knowledge':
+        return `
+Focus on identifying themes that represent:
+- Factual information and data points
+- Procedural knowledge and how-to information
+- Business processes and operational knowledge
+- Technical specifications and requirements
+- Reference information and knowledge base content
+
+Prioritize themes that would help an AI serve as a comprehensive knowledge repository.`;
+
+      case 'style':
+        return `
+Focus on identifying themes that represent:
+- Writing style patterns and linguistic choices
+- Tone and voice characteristics
+- Communication approaches and rhetoric
+- Stylistic elements and literary devices
+- Audience engagement and persuasion techniques
+
+Prioritize themes that would help an AI replicate the specific writing and communication style.`;
+
+      default:
+        return 'Focus on comprehensive theme identification covering all aspects of the content.';
+    }
+  }
+
+  private getGoalSpecificQAGuidance(goal: FineTuningGoal): string {
+    switch (goal) {
+      case 'topic':
+        return `
+TOPIC/THEME FOCUS - Generate Q&A pairs that:
+- Test understanding of main topics and themes
+- Explore relationships between different concepts
+- Cover categorical knowledge and subject areas
+- Include questions about thematic patterns
+- Focus on conceptual understanding rather than specific facts
+- Vary from broad thematic questions to specific topic details
+
+Question types should include:
+- "What is the main theme of...?"
+- "How do these concepts relate to...?"
+- "What category does this belong to?"
+- "What are the key themes in...?"`;
+
+      case 'knowledge':
+        return `
+KNOWLEDGE BASE FOCUS - Generate Q&A pairs that:
+- Test factual accuracy and information retrieval
+- Cover procedural knowledge and step-by-step processes
+- Include specific data points and technical details
+- Focus on practical application of information
+- Test comprehensive understanding of business/domain knowledge
+- Include both simple facts and complex explanations
+
+Question types should include:
+- "What is...?" (factual questions)
+- "How do you...?" (procedural questions)
+- "When should...?" (conditional knowledge)
+- "What are the steps to...?" (process questions)`;
+
+      case 'style':
+        return `
+WRITING/STYLE FOCUS - Generate Q&A pairs that:
+- Demonstrate the specific writing style and tone
+- Show communication patterns and voice
+- Include examples of stylistic choices
+- Test ability to maintain consistent tone
+- Cover rhetorical techniques and approaches
+- Focus on how things are said, not just what is said
+
+Question types should include:
+- "How would you explain...?" (style demonstration)
+- "What tone should be used for...?" (voice questions)
+- "How would you communicate...?" (style application)
+- "What approach would you take to...?" (communication strategy)`;
+
+      default:
+        return 'Generate comprehensive Q&A pairs covering all aspects of the content.';
+    }
+  }
+
   public async identifyThemes(
-    combinedContent: string
+    combinedContent: string,
+    fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
     if (!this.ai) {
       throw new Error('Gemini service not initialized');
     }
 
+    const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+
     const prompt = `
-Analyze the following content and identify 5-8 key themes, topics, or subject areas that would be valuable for comprehensive Q&A generation and web search augmentation.
+Analyze the following content and identify 5-8 key themes optimized for ${goalConfig?.name} fine-tuning.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+${goalGuidance}
 
 Requirements:
-- Focus on specific, searchable topics rather than generic themes
-- Prioritize themes that would benefit from current, factual information
-- Consider what additional context would enhance understanding
-- Return themes as search-friendly phrases
+- Identify themes that align with the ${goalConfig?.name} objective
+- Focus on themes that would be valuable for comprehensive Q&A generation
+- Consider what additional context would enhance the fine-tuning goal
+- Return themes as search-friendly phrases when web augmentation is enabled
 - Include both broad and specific themes for comprehensive coverage
-- Ensure themes are relevant for generating 100+ diverse Q&A pairs
+- Ensure themes support generation of 100+ diverse Q&A pairs
 
 Format as a JSON array of strings, each representing a specific theme or topic.
 
-Example: ["artificial intelligence ethics", "machine learning algorithms", "neural network architectures", "AI safety protocols", "deep learning applications"]
+Example for ${goalConfig?.name}: ${this.getExampleThemes(fineTuningGoal)}
 
 Content to analyze:
 ---
@@ -104,6 +210,19 @@ JSON Output:
       console.error('Theme identification failed:', error);
       // Return empty array if theme identification fails - web search will still work
       return [];
+    }
+  }
+
+  private getExampleThemes(goal: FineTuningGoal): string {
+    switch (goal) {
+      case 'topic':
+        return '["artificial intelligence ethics", "machine learning algorithms", "neural network architectures", "AI safety protocols", "deep learning applications"]';
+      case 'knowledge':
+        return '["API documentation procedures", "database configuration steps", "troubleshooting methodologies", "security implementation protocols", "performance optimization techniques"]';
+      case 'style':
+        return '["technical writing clarity", "professional communication tone", "persuasive argumentation style", "audience engagement techniques", "concise explanation methods"]';
+      default:
+        return '["main topic themes", "key concepts", "important procedures", "communication patterns", "knowledge areas"]';
     }
   }
 
@@ -186,26 +305,32 @@ Do not add commentary or explanations.
 
   public async augmentWithWebSearch(
     originalContent: string,
-    identifiedThemes: string[] = []
+    identifiedThemes: string[] = [],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
     if (!this.ai) {
       throw new Error('Gemini service not initialized');
     }
 
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = identifiedThemes.length > 0 
       ? `\n\nFocus your web search on these identified themes: ${identifiedThemes.join(', ')}`
       : '';
 
+    const goalSpecificGuidance = this.getGoalSpecificWebSearchGuidance(fineTuningGoal);
+
     const prompt = `
-You are a content augmentation expert. Your task:
+You are a content augmentation expert optimizing for ${goalConfig?.name} fine-tuning. Your task:
 
 1. Analyze the core themes and topics in the provided text
 2. Use Google Search to find relevant, factual, up-to-date information${themeGuidance}
 3. Integrate web-sourced information with the original text
-4. Create a comprehensive, coherent narrative
+4. Create a comprehensive, coherent narrative optimized for ${goalConfig?.promptFocus}
 5. Focus on enhancing value while maintaining original themes
 6. Prioritize current facts, statistics, and developments
 7. Ensure the augmented content supports generation of 100+ diverse Q&A pairs
+
+${goalSpecificGuidance}
 
 Return ONLY the augmented text without commentary.
 
@@ -233,7 +358,45 @@ ${originalContent}
     }
   }
 
-  public async generateQAPairs(content: string, themes: string[] = []): Promise<QAPair[]> {
+  private getGoalSpecificWebSearchGuidance(goal: FineTuningGoal): string {
+    switch (goal) {
+      case 'topic':
+        return `
+TOPIC FOCUS - When searching and augmenting:
+- Find information that expands on the main themes and topics
+- Look for related concepts and theoretical frameworks
+- Include current developments in the subject areas
+- Add context that helps understand topic relationships
+- Focus on thematic depth rather than specific procedures`;
+
+      case 'knowledge':
+        return `
+KNOWLEDGE BASE FOCUS - When searching and augmenting:
+- Find factual information, statistics, and data points
+- Look for procedural knowledge and best practices
+- Include technical specifications and requirements
+- Add current industry standards and guidelines
+- Focus on comprehensive, accurate information`;
+
+      case 'style':
+        return `
+STYLE FOCUS - When searching and augmenting:
+- Find examples of similar writing styles and communication approaches
+- Look for style guides and communication best practices
+- Include examples of effective rhetoric and persuasion
+- Add context about audience engagement techniques
+- Focus on enhancing stylistic elements and voice consistency`;
+
+      default:
+        return 'Focus on comprehensive content enhancement covering all aspects.';
+    }
+  }
+
+  public async generateQAPairs(
+    content: string, 
+    themes: string[] = [],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<QAPair[]> {
     if (!this.ai) {
       throw new Error('Gemini service not initialized');
     }
@@ -242,35 +405,45 @@ ${originalContent}
       throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
     }
 
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = themes.length > 0 
       ? `\n\nEnsure questions cover these key themes: ${themes.join(', ')}`
       : '';
+
+    const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
     const incorrectCount = Math.ceil(QA_PAIR_COUNT_TARGET * INCORRECT_ANSWER_RATIO);
     const correctCount = QA_PAIR_COUNT_TARGET - incorrectCount;
 
     const prompt = `
-Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs from the provided text for AI fine-tuning.
+Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs optimized for ${goalConfig?.name} fine-tuning.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+${goalSpecificGuidance}
 
 CRITICAL REQUIREMENTS:
 1. Generate ${correctCount} CORRECT question-answer pairs
 2. Generate ${incorrectCount} INCORRECT question-answer pairs (marked as incorrect for training)
-3. Questions should be natural user queries answerable from the text${themeGuidance}
-4. Vary question types: factual, conceptual, analytical, comparative, procedural
+3. Questions should be natural user queries relevant to the ${goalConfig?.name} objective${themeGuidance}
+4. Vary question types based on the fine-tuning goal
 5. Avoid self-referential phrases like "according to the text"
-6. Ensure comprehensive coverage of all major topics
-7. Include both simple and complex questions
+6. Ensure comprehensive coverage aligned with ${goalConfig?.name} objectives
+7. Include both simple and complex questions appropriate for the goal
 8. Incorrect answers should be plausible but factually wrong
 
 For CORRECT answers:
-- Must be factual and directly derived from the content
+- Must align with the ${goalConfig?.name} objective
 - Complete and informative responses
 - High confidence in accuracy
+- Demonstrate the desired ${goalConfig?.promptFocus}
 
 For INCORRECT answers:
 - Should seem plausible but contain factual errors
 - Maintain similar structure to correct answers
 - Clearly mark as incorrect for training purposes
+- Help the model learn to distinguish quality responses
 
 Format as valid JSON array with objects containing:
 - "user": the question

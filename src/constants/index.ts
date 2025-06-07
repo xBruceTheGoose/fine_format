@@ -1,4 +1,4 @@
-import { TextMimeType, BinaryMimeType, FineTuningConfig } from '../types';
+import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } from '../types';
 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp';
 export const QA_PAIR_COUNT_TARGET = 100; // Target 100+ Q&A pairs
@@ -69,5 +69,29 @@ export const FINE_TUNING_METHODS: FineTuningConfig[] = [
     description: 'Standard formats for custom implementations',
     formats: ['json', 'jsonl', 'csv'],
     defaultFormat: 'json'
+  }
+];
+
+export const FINE_TUNING_GOALS: FineTuningGoalConfig[] = [
+  {
+    id: 'topic',
+    name: 'Topic/Theme Focus',
+    description: 'Generate Q&A pairs focused on the main topics and themes within the content',
+    icon: '🎯',
+    promptFocus: 'topic and theme understanding'
+  },
+  {
+    id: 'knowledge',
+    name: 'Knowledge Base',
+    description: 'Create comprehensive Q&A pairs for business knowledge bases and factual content',
+    icon: '📚',
+    promptFocus: 'factual knowledge and information retrieval'
+  },
+  {
+    id: 'style',
+    name: 'Writing/Communication Style',
+    description: 'Focus on mimicking the writing style, tone, and communication patterns',
+    icon: '✍️',
+    promptFocus: 'writing style, tone, and communication patterns'
   }
 ];

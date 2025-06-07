@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { FileData, UrlData, ProcessedData } from '../types';
+import { FileData, UrlData, ProcessedData, FineTuningGoal } from '../types';
 import { geminiService } from '../services/geminiService';
 
 interface UseDatasetGenerationReturn {
@@ -8,7 +8,7 @@ interface UseDatasetGenerationReturn {
   currentStep: string;
   progress: number;
   error: string | null;
-  generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean) => Promise<void>;
+  generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean, fineTuningGoal: FineTuningGoal) => Promise<void>;
   clearError: () => void;
 }
 
@@ -32,7 +32,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   const generateDataset = useCallback(async (
     files: FileData[],
     urls: UrlData[],
-    enableWebAugmentation: boolean
+    enableWebAugmentation: boolean,
+    fineTuningGoal: FineTuningGoal
   ) => {
     if (!geminiService.isReady()) {
       setError('Gemini service is not initialized. Please check your API key.');
@@ -124,7 +125,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       currentStepIndex++;
       updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...');
       
-      const identifiedThemes = await geminiService.identifyThemes(combinedContent);
+      const identifiedThemes = await geminiService.identifyThemes(combinedContent, fineTuningGoal);
       
       let groundingMetadata;
       let isAugmented = false;
@@ -139,7 +140,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         currentStepIndex++;
         updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...');
         try {
-          const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes);
+          const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes, fineTuningGoal);
           combinedContent = result.augmentedText;
           groundingMetadata = result.groundingMetadata;
           isAugmented = true;
@@ -152,7 +153,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Final step: Generate comprehensive Q&A pairs
       currentStepIndex++;
       updateProgress(currentStepIndex, totalSteps, 'Generating 100+ intelligent Q&A pairs with correct and incorrect answers...');
-      const qaPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes);
+      const qaPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
 
       const correctAnswers = qaPairs.filter(pair => pair.isCorrect);
       const incorrectAnswers = qaPairs.filter(pair => !pair.isCorrect);

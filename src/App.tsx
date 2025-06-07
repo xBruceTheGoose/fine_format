@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Zap, Search, HelpCircle } from 'lucide-react';
-import { FileData, UrlData } from './types';
+import { Zap, Search, HelpCircle, Target, BookOpen, PenTool } from 'lucide-react';
+import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
@@ -9,13 +9,15 @@ import { ProcessingStatus } from './components/ProcessingStatus';
 import { DatasetPreview } from './components/DatasetPreview';
 import { Button } from './components/ui/Button';
 import { Alert } from './components/ui/Alert';
-import { Card, CardContent } from './components/ui/Card';
+import { Card, CardContent, CardHeader } from './components/ui/Card';
 import { Tooltip } from './components/ui/Tooltip';
+import { FINE_TUNING_GOALS } from './constants';
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
   const [urls, setUrls] = useState<UrlData[]>([]);
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
+  const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   
   const {
     processedData,
@@ -35,7 +37,16 @@ const App: React.FC = () => {
 
   const handleGenerateDataset = () => {
     if (canGenerate) {
-      generateDataset(files, urls, enableWebAugmentation);
+      generateDataset(files, urls, enableWebAugmentation, fineTuningGoal);
+    }
+  };
+
+  const getGoalIcon = (goalId: FineTuningGoal) => {
+    switch (goalId) {
+      case 'topic': return Target;
+      case 'knowledge': return BookOpen;
+      case 'style': return PenTool;
+      default: return Target;
     }
   };
 
@@ -98,6 +109,81 @@ const App: React.FC = () => {
               onClose={clearError}
             />
           )}
+
+          {/* Fine-Tuning Goal Selection */}
+          <Card className="cyber-card">
+            <CardHeader>
+              <div className="flex items-center space-x-3">
+                <h3 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+                  <Target 
+                    size={24} 
+                    className="mr-3 text-accent" 
+                    style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
+                  />
+                  FINE-TUNING GOAL
+                </h3>
+                <Tooltip content="Select the primary focus for your dataset generation. This determines how the AI will analyze your content and generate Q&A pairs optimized for your specific fine-tuning objectives." />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {FINE_TUNING_GOALS.map((goal) => {
+                  const IconComponent = getGoalIcon(goal.id);
+                  const isSelected = fineTuningGoal === goal.id;
+                  
+                  return (
+                    <button
+                      key={goal.id}
+                      onClick={() => setFineTuningGoal(goal.id)}
+                      disabled={isProcessing}
+                      className={`
+                        p-4 rounded-lg border-2 transition-all duration-300 text-left relative overflow-hidden
+                        ${isSelected 
+                          ? 'border-primary bg-primary/10 shadow-cyber' 
+                          : 'border-border bg-surface/30 hover:border-primary/50 hover:bg-surface/50'
+                        }
+                        ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                      `}
+                      style={{
+                        background: isSelected 
+                          ? 'linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04))'
+                          : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))'
+                      }}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className="text-2xl">{goal.icon}</div>
+                        <IconComponent 
+                          size={24} 
+                          className={`${isSelected ? 'text-primary' : 'text-accent'} flex-shrink-0`}
+                          style={{ filter: `drop-shadow(0 0 3px ${isSelected ? '#00FF41' : '#00FFFF'})` }}
+                        />
+                      </div>
+                      <h4 className={`font-bold text-lg mt-3 font-mono tracking-wide ${
+                        isSelected ? 'neon-text' : 'text-foreground'
+                      }`}>
+                        {goal.name}
+                      </h4>
+                      <p className="text-muted text-sm mt-2 font-mono leading-relaxed">
+                        {goal.description}
+                      </p>
+                      {isSelected && (
+                        <div className="absolute top-2 right-2">
+                          <div className="w-3 h-3 bg-primary rounded-full animate-pulse"
+                               style={{ boxShadow: '0 0 5px #00FF41' }} />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-4 p-3 bg-surface/30 rounded-lg border border-border">
+                <p className="text-accent text-sm font-mono">
+                  <span className="neon-text-accent">SELECTED FOCUS:</span>{' '}
+                  {FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal)?.promptFocus}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* File Upload */}
           <FileUpload
@@ -199,7 +285,7 @@ const App: React.FC = () => {
             <span className="text-primary">SUPPORTS:</span> .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
           </p>
           <p className="text-muted text-sm font-mono">
-            Made with <span className="text-secondary neon-text-secondary">&lt;3</span> and{' '}
+            Made with <span className="text-secondary neon-text-secondary"><3</span> and{' '}
             <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
             <span className="text-foreground">brucethegoose.eth</span>
           </p>

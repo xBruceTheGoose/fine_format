@@ -97,3 +97,16 @@ export interface FineTuningConfig {
   formats: string[];
   defaultFormat: string;
 }
+
+export type FineTuningGoal = 
+  | 'topic'
+  | 'knowledge'
+  | 'style';
+
+export interface FineTuningGoalConfig {
+  id: FineTuningGoal;
+  name: string;
+  description: string;
+  icon: string;
+  promptFocus: string;
+}
