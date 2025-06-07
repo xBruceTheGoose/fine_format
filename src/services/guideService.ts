@@ -1,6 +1,37 @@
 import { FineTuningMethod, QAPair } from '../types';
 
 export class GuideService {
+  private static readonly GUIDE_DISCLAIMER = `
+
+---
+
+## Important Note
+
+The training guidelines provided above are recommendations based on the selected fine-tuning method, dataset focus, and common best practices. These parameters can and should be adjusted based on:
+
+- **Your specific preferences and requirements**
+- **Available GPU/hardware specifications**
+- **Memory constraints and computational resources**
+- **Training time preferences**
+- **Quality vs. speed trade-offs**
+- **Domain-specific considerations**
+
+**Hardware Considerations:**
+- Reduce batch sizes for limited GPU memory
+- Increase epochs for smaller datasets
+- Adjust learning rates based on convergence patterns
+- Use gradient accumulation for effective larger batch sizes
+- Consider mixed precision training (fp16) for faster training
+
+**Performance Tuning:**
+- Monitor validation metrics closely
+- Use early stopping to prevent overfitting
+- Experiment with different learning rate schedules
+- Consider data augmentation techniques
+- Validate on held-out test sets
+
+Feel free to experiment with different configurations to find what works best for your specific use case and hardware setup.`;
+
   public static generateFineTuningGuide(
     method: FineTuningMethod,
     qaPairs: QAPair[],
@@ -22,22 +53,33 @@ Key Themes: ${themes.join(', ')}
 
 `;
 
+    let guideContent = '';
+
     switch (method) {
       case 'pytorch':
-        return header + this.generatePyTorchGuide(qaPairs, correctCount, incorrectCount);
+        guideContent = this.generatePyTorchGuide(qaPairs, correctCount, incorrectCount);
+        break;
       case 'together':
-        return header + this.generateTogetherGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        guideContent = this.generateTogetherGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        break;
       case 'huggingface':
-        return header + this.generateHuggingFaceGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        guideContent = this.generateHuggingFaceGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        break;
       case 'colab':
-        return header + this.generateColabGuide(qaPairs, correctCount, incorrectCount);
+        guideContent = this.generateColabGuide(qaPairs, correctCount, incorrectCount);
+        break;
       case 'openai':
-        return header + this.generateOpenAIGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        guideContent = this.generateOpenAIGuide(qaPairs, correctCount, incorrectCount, timestamp);
+        break;
       case 'anthropic':
-        return header + this.generateAnthropicGuide(qaPairs, correctCount, incorrectCount);
+        guideContent = this.generateAnthropicGuide(qaPairs, correctCount, incorrectCount);
+        break;
       default:
-        return header + this.generateGenericGuide(qaPairs, correctCount, incorrectCount);
+        guideContent = this.generateGenericGuide(qaPairs, correctCount, incorrectCount);
+        break;
     }
+
+    return header + guideContent + this.GUIDE_DISCLAIMER;
   }
 
   private static getMethodName(method: FineTuningMethod): string {
