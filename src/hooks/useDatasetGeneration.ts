@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
 import { deepseekService } from '../services/deepseekService';
-import { notificationService } from '../services/notificationService';
+import { notificationService } from '../services/notificationService.ts';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
