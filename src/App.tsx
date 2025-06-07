@@ -20,6 +20,7 @@ const App: React.FC = () => {
     processedData,
     isProcessing,
     currentStep,
+    progress,
     error,
     generateDataset,
     clearError,
@@ -138,6 +139,7 @@ const App: React.FC = () => {
           <ProcessingStatus
             isProcessing={isProcessing}
             currentStep={currentStep}
+            progress={progress}
           />
 
           {/* Dataset Preview */}

@@ -6,6 +6,7 @@ interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
   isProcessing: boolean;
   currentStep: string;
+  progress: number;
   error: string | null;
   generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean) => Promise<void>;
   clearError: () => void;
@@ -15,10 +16,17 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   const [processedData, setProcessedData] = useState<ProcessedData | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState('');
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   const clearError = useCallback(() => {
     setError(null);
+  }, []);
+
+  const updateProgress = useCallback((step: number, total: number, message: string) => {
+    const progressPercent = Math.round((step / total) * 100);
+    setProgress(progressPercent);
+    setCurrentStep(message);
   }, []);
 
   const generateDataset = useCallback(async (
@@ -42,9 +50,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     setIsProcessing(true);
     setError(null);
     setProcessedData(null);
-    setCurrentStep('Starting dataset generation...');
+    setProgress(0);
 
     try {
+      const totalSources = readyFiles.length + readyUrls.length;
+      const totalSteps = totalSources + (enableWebAugmentation ? 3 : 1); // +1 for Q&A generation, +2 for theme identification and web search
+      let currentStepIndex = 0;
+
       // Step 1: Clean content from files and URLs
       const cleanedTexts: string[] = [];
       const successfulSources: string[] = [];
@@ -52,7 +64,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Process files
       for (let i = 0; i < readyFiles.length; i++) {
         const file = readyFiles[i];
-        setCurrentStep(`Processing file ${file.file.name} (${i + 1}/${readyFiles.length + readyUrls.length})...`);
+        currentStepIndex++;
+        updateProgress(currentStepIndex, totalSteps, `Processing file: ${file.file.name}`);
 
         try {
           let cleanedText: string;
@@ -83,7 +96,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Process URLs
       for (let i = 0; i < readyUrls.length; i++) {
         const urlData = readyUrls[i];
-        setCurrentStep(`Processing URL ${urlData.title || urlData.url} (${readyFiles.length + i + 1}/${readyFiles.length + readyUrls.length})...`);
+        currentStepIndex++;
+        updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`);
 
         try {
           const cleanedText = await geminiService.cleanTextContent(
@@ -112,17 +126,20 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
       // Step 3: Web augmentation (if enabled)
       if (enableWebAugmentation) {
-        setCurrentStep('Identifying themes for targeted web search...');
+        currentStepIndex++;
+        updateProgress(currentStepIndex, totalSteps, 'Identifying key themes for targeted web search...');
         
         try {
           // Identify themes from the combined content
           const identifiedThemes = await geminiService.identifyThemes(combinedContent);
           
           if (identifiedThemes.length > 0) {
-            setCurrentStep(`Found ${identifiedThemes.length} themes: ${identifiedThemes.join(', ')}`);
+            currentStepIndex++;
+            updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`);
           }
 
-          setCurrentStep('Augmenting content with targeted web search...');
+          currentStepIndex++;
+          updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...');
           const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes);
           combinedContent = result.augmentedText;
           groundingMetadata = result.groundingMetadata;
@@ -133,8 +150,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         }
       }
 
-      // Step 4: Generate Q&A pairs
-      setCurrentStep('Generating Q&A pairs...');
+      // Final step: Generate Q&A pairs
+      currentStepIndex++;
+      updateProgress(currentStepIndex, totalSteps, 'Generating intelligent Q&A pairs...');
       const qaPairs = await geminiService.generateQAPairs(combinedContent);
 
       setProcessedData({
@@ -146,20 +164,23 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         groundingMetadata,
       });
 
-      setCurrentStep(`Successfully generated ${qaPairs.length} Q&A pairs!`);
+      setProgress(100);
+      setCurrentStep(`Successfully generated ${qaPairs.length} Q&A pairs from ${successfulSources.length} sources!`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);
       setCurrentStep('');
+      setProgress(0);
     } finally {
       setIsProcessing(false);
     }
-  }, []);
+  }, [updateProgress]);
 
   return {
     processedData,
     isProcessing,
     currentStep,
+    progress,
     error,
     generateDataset,
     clearError,
