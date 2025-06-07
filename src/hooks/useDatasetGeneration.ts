@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
-import { deepseekService } from '../services/deepseekService';
-import { notificationService } from '../services/notificationService.ts';
+import { openRouterService } from '../services/openRouterService';
+import { notificationService } from '../services/notificationService';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -46,7 +46,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       totalTime += webAugmentationTime;
     }
     
-    if (enableGapFilling && deepseekService.isReady()) {
+    if (enableGapFilling && openRouterService.isReady()) {
       totalTime += gapAnalysisTime + syntheticGenerationTime + validationTime;
     }
 
@@ -115,7 +115,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Calculate total steps based on enabled features
       let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
-      if (enableGapFilling && deepseekService.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
+      if (enableGapFilling && openRouterService.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
       
       let currentStepIndex = 0;
 
@@ -221,14 +221,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Step 5-7: Knowledge gap filling (if enabled and DeepSeek is available)
-      if (enableGapFilling && deepseekService.isReady()) {
+      // Step 5-7: Knowledge gap filling (if enabled and OpenRouter is available)
+      if (enableGapFilling && openRouterService.isReady()) {
         try {
           // Step 5: Identify knowledge gaps
           currentStepIndex++;
           updateProgress(currentStepIndex, totalSteps, 'Analyzing dataset for knowledge gaps...', totalSources, enableWebAugmentation, enableGapFilling);
           
-          identifiedGaps = await deepseekService.identifyKnowledgeGaps(
+          identifiedGaps = await openRouterService.identifyKnowledgeGaps(
             combinedContent,
             identifiedThemes,
             initialQAPairs,
@@ -240,7 +240,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             currentStepIndex++;
             updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
             
-            const syntheticPairs = await deepseekService.generateSyntheticQAPairs(
+            const syntheticPairs = await openRouterService.generateSyntheticQAPairs(
               combinedContent,
               identifiedGaps,
               fineTuningGoal,
@@ -305,8 +305,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           // Continue with original Q&A pairs only
           setError('Knowledge gap filling encountered issues, proceeding with original dataset.');
         }
-      } else if (enableGapFilling && !deepseekService.isReady()) {
-        console.warn('Knowledge gap filling requested but DeepSeek service not available');
+      } else if (enableGapFilling && !openRouterService.isReady()) {
+        console.warn('Knowledge gap filling requested but OpenRouter service not available');
       }
 
       // Calculate final statistics
@@ -326,7 +326,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         syntheticPairCount,
         validatedPairCount,
         identifiedGaps,
-        gapFillingEnabled: enableGapFilling && deepseekService.isReady()
+        gapFillingEnabled: enableGapFilling && openRouterService.isReady()
       });
 
       setProgress(100);

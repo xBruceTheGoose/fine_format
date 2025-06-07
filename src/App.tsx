@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
-import { deepseekService } from './services/deepseekService';
+import { openRouterService } from './services/openRouterService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
@@ -34,7 +34,7 @@ const App: React.FC = () => {
   } = useDatasetGeneration();
 
   const isGeminiReady = geminiService.isReady();
-  const isDeepSeekReady = deepseekService.isReady();
+  const isOpenRouterReady = openRouterService.isReady();
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
@@ -105,15 +105,6 @@ const App: React.FC = () => {
               type="warning"
               title="API KEY REQUIRED"
               message="Please set your Gemini API key in the .env.local file and restart the development server."
-            />
-          )}
-
-          {/* DeepSeek Info */}
-          {!isDeepSeekReady && (
-            <Alert
-              type="info"
-              title="ENHANCED FEATURES AVAILABLE"
-              message="Add VITE_DEEPSEEK_API_KEY to .env.local to enable knowledge gap analysis and synthetic dataset generation for even higher quality results."
             />
           )}
 
@@ -290,11 +281,9 @@ const App: React.FC = () => {
                       }} />
                       <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - identifies missing coverage areas
                     </div>
-                    {!isDeepSeekReady && (
-                      <div className="text-warning text-sm font-mono ml-7">
-                        ⚠️ Limited to Gemini-only analysis (add VITE_DEEPSEEK_API_KEY for full features)
-                      </div>
-                    )}
+                    <div className="text-success text-sm font-mono ml-7">
+                      ✅ Using free Llama 3.1 8B model via OpenRouter for gap analysis
+                    </div>
                   </div>
                 )}
               </div>

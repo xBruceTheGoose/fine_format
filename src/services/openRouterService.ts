@@ -1,65 +1,39 @@
 import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal } from '../types';
 import { FINE_TUNING_GOALS } from '../constants';
 
-class DeepSeekService {
-  private apiKey: string | null = null;
-  private baseUrl = 'https://api.deepseek.com/v1';
-  private isInitialized = false;
-
-  constructor() {
-    this.initialize();
-  }
-
-  private initialize(): void {
-    const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
-    
-    if (!apiKey?.trim()) {
-      console.warn('DeepSeek API key not found in environment variables. Knowledge gap filling will be disabled.');
-      return;
-    }
-
-    this.apiKey = apiKey.trim();
-    this.isInitialized = true;
-  }
+class OpenRouterService {
+  private baseUrl = '/api/openrouter'; // Use local API endpoint
+  private isInitialized = true; // Always available since it uses server-side keys
 
   public isReady(): boolean {
-    return this.isInitialized && this.apiKey !== null;
+    return this.isInitialized;
   }
 
   private async makeRequest(messages: Array<{ role: string; content: string }>, temperature = 0.7): Promise<string> {
-    if (!this.apiKey) {
-      throw new Error('DeepSeek service not initialized');
-    }
-
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+    const response = await fetch(`${this.baseUrl}/chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify({
-        model: 'deepseek-reasoner',
         messages,
         temperature,
         max_tokens: 4000,
-        stream: false,
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 402) {
-        throw new Error(`DeepSeek API billing error (402): Your DeepSeek account requires payment or has insufficient funds. Please check your account billing status at https://platform.deepseek.com/billing`);
-      }
-      throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
     
-    if (!data.choices?.[0]?.message?.content) {
-      throw new Error('Invalid response from DeepSeek API');
+    if (!data.content) {
+      throw new Error('Invalid response from OpenRouter API');
     }
 
-    return data.choices[0].message.content;
+    return data.content;
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -75,8 +49,8 @@ class DeepSeekService {
     try {
       return JSON.parse(jsonStr);
     } catch (error) {
-      console.error('Failed to parse JSON response from DeepSeek:', error);
-      throw new Error(`Invalid JSON response from DeepSeek: ${responseText.substring(0, 200)}...`);
+      console.error('Failed to parse JSON response from OpenRouter:', error);
+      throw new Error(`Invalid JSON response from OpenRouter: ${responseText.substring(0, 200)}...`);
     }
   }
 
@@ -86,10 +60,6 @@ class DeepSeekService {
     existingQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
-    if (!this.isReady()) {
-      throw new Error('DeepSeek service not available');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const existingQuestions = existingQAPairs.map(pair => pair.user);
     
@@ -174,10 +144,6 @@ JSON Output:
     fineTuningGoal: FineTuningGoal = 'knowledge',
     targetCount: number = 20
   ): Promise<SyntheticQAPair[]> {
-    if (!this.isReady()) {
-      throw new Error('DeepSeek service not available');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
 
@@ -268,4 +234,4 @@ JSON Output:
   }
 }
 
-export const deepseekService = new DeepSeekService();
+export const openRouterService = new OpenRouterService();
