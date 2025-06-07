@@ -80,8 +80,8 @@ const App: React.FC = () => {
   // Get previous and next goals for carousel display
   const prevGoalIndex = currentGoalIndex === 0 ? FINE_TUNING_GOALS.length - 1 : currentGoalIndex - 1;
   const nextGoalIndex = (currentGoalIndex + 1) % FINE_TUNING_GOALS.length;
-  const prevGoal = FINE_TUNING_GOALS[prevGoalIndex];
-  const nextGoal = FINE_TUNING_GOALS[nextGoalIndex];
+  const prevGoalConfig = FINE_TUNING_GOALS[prevGoalIndex];
+  const nextGoalConfig = FINE_TUNING_GOALS[nextGoalIndex];
 
   return (
     <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden">
@@ -183,7 +183,7 @@ const App: React.FC = () => {
                     {/* Previous Goal Card (Left) */}
                     <div 
                       className="absolute left-0 w-64 h-64 cursor-pointer transition-all duration-500 transform -translate-x-8 scale-75 opacity-60 hover:opacity-80 hover:scale-80"
-                      onClick={() => selectGoal(prevGoal.id)}
+                      onClick={() => selectGoal(prevGoalConfig.id)}
                       style={{
                         background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))',
                         border: '1px solid rgba(102, 102, 102, 0.3)',
@@ -192,9 +192,9 @@ const App: React.FC = () => {
                       }}
                     >
                       <div className="p-6 h-full flex flex-col items-center justify-center text-center">
-                        <div className="text-4xl mb-3">{prevGoal.icon}</div>
-                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{prevGoal.name}</h4>
-                        <p className="text-muted text-sm font-mono leading-tight">{prevGoal.description.substring(0, 80)}...</p>
+                        <div className="text-4xl mb-3">{prevGoalConfig.icon}</div>
+                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{prevGoalConfig.name}</h4>
+                        <p className="text-muted text-sm font-mono leading-tight">{prevGoalConfig.description.substring(0, 80)}...</p>
                       </div>
                     </div>
 
@@ -253,7 +253,7 @@ const App: React.FC = () => {
                     {/* Next Goal Card (Right) */}
                     <div 
                       className="absolute right-0 w-64 h-64 cursor-pointer transition-all duration-500 transform translate-x-8 scale-75 opacity-60 hover:opacity-80 hover:scale-80"
-                      onClick={() => selectGoal(nextGoal.id)}
+                      onClick={() => selectGoal(nextGoalConfig.id)}
                       style={{
                         background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))',
                         border: '1px solid rgba(102, 102, 102, 0.3)',
@@ -262,9 +262,9 @@ const App: React.FC = () => {
                       }}
                     >
                       <div className="p-6 h-full flex flex-col items-center justify-center text-center">
-                        <div className="text-4xl mb-3">{nextGoal.icon}</div>
-                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{nextGoal.name}</h4>
-                        <p className="text-muted text-sm font-mono leading-tight">{nextGoal.description.substring(0, 80)}...</p>
+                        <div className="text-4xl mb-3">{nextGoalConfig.icon}</div>
+                        <h4 className="text-muted font-bold text-lg font-mono mb-2">{nextGoalConfig.name}</h4>
+                        <p className="text-muted text-sm font-mono leading-tight">{nextGoalConfig.description.substring(0, 80)}...</p>
                       </div>
                     </div>
 
