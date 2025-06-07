@@ -44,7 +44,7 @@ export const Alert: React.FC<AlertProps> = ({
       }} />
       <div className="flex-grow">
         {title && (
-          <h4 className="font-bold mb-2 text-lg tracking-wide" style={{
+          <h4 className="font-bold mb-2 text-lg tracking-wide\" style={{
             textShadow: '0 0 5px currentColor'
           }}>
             {title}
