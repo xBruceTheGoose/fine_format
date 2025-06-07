@@ -288,16 +288,13 @@ const App: React.FC = () => {
                       <Brain size={18} className="mr-3 animate-pulse" style={{
                         filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }} />
-                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - Gemini identifies missing coverage areas
+                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - Initial dataset generation will be analyzed to identify knowledge gaps
                     </div>
                     <div className="text-success text-sm font-mono ml-7">
-                      ✅ Using Nvidia Llama 3.3 Nemotron (free) via OpenRouter for synthetic generation
+                      ✅ Identified knowledge gaps will be targeted for synthetic data generation
                     </div>
                     <div className="text-accent text-sm font-mono ml-7">
-                      🔍 Cross-validation by Gemini ensures quality and accuracy
-                    </div>
-                    <div className="text-warning text-sm font-mono ml-7">
-                      📊 Generates 50-100 additional Q&A pairs beyond the initial 100
+                      🔍 Dual-model cross validation guarantees validity and relevance of synthetic data augments
                     </div>
                   </div>
                 )}
