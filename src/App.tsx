@@ -255,7 +255,7 @@ const App: React.FC = () => {
                     <Search size={18} className="mr-3 animate-pulse" style={{
                       filter: 'drop-shadow(0 0 3px #00FFFF)'
                     }} />
-                    <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> will enhance content quality and coverage
+                    <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> - will enhance content quality and coverage
                   </div>
                 )}
 
