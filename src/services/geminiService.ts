@@ -41,6 +41,14 @@ class GeminiService {
       jsonStr = match[1].trim();
     }
 
+    // Extract JSON array by finding the first '[' and last ']'
+    const firstBracket = jsonStr.indexOf('[');
+    const lastBracket = jsonStr.lastIndexOf(']');
+    
+    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+      jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+    }
+
     try {
       return JSON.parse(jsonStr);
     } catch (error) {
