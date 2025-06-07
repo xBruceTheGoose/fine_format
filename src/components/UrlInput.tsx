@@ -4,6 +4,7 @@ import { UrlData } from '../types';
 import { UrlService } from '../services/urlService';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
+import { Tooltip } from './ui/Tooltip';
 
 interface UrlInputProps {
   urls: UrlData[];
@@ -82,10 +83,13 @@ export const UrlInput: React.FC<UrlInputProps> = ({
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <h3 className="text-lg font-semibold text-gray-300 flex items-center">
-            <Globe size={20} className="mr-2 text-primary" />
-            Add URLs
-          </h3>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-lg font-semibold text-gray-300 flex items-center">
+              <Globe size={20} className="mr-2 text-primary" />
+              Add URLs
+            </h3>
+            <Tooltip content="Add web pages, articles, documentation, or any publicly accessible URL. The system will automatically extract and clean the text content for dataset generation." />
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex space-x-2">

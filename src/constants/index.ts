@@ -1,4 +1,4 @@
-import { TextMimeType, BinaryMimeType } from '../types';
+import { TextMimeType, BinaryMimeType, FineTuningConfig } from '../types';
 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp';
 export const QA_PAIR_COUNT_TARGET = 100; // Target 100+ Q&A pairs
@@ -19,3 +19,55 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 export const ACCEPTED_FILE_EXTENSIONS = '.txt,.md,.html,.jsonl,.pdf,.docx';
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
+
+export const FINE_TUNING_METHODS: FineTuningConfig[] = [
+  {
+    id: 'pytorch',
+    name: 'PyTorch',
+    description: 'Native PyTorch training with custom datasets',
+    formats: ['json', 'jsonl'],
+    defaultFormat: 'json'
+  },
+  {
+    id: 'together',
+    name: 'Together.ai',
+    description: 'Together.ai fine-tuning service',
+    formats: ['jsonl'],
+    defaultFormat: 'jsonl'
+  },
+  {
+    id: 'huggingface',
+    name: 'Hugging Face',
+    description: 'Hugging Face Transformers and Datasets',
+    formats: ['json', 'jsonl', 'csv'],
+    defaultFormat: 'json'
+  },
+  {
+    id: 'colab',
+    name: 'Colab/Jupyter',
+    description: 'Google Colab and Jupyter notebook environments',
+    formats: ['json', 'csv'],
+    defaultFormat: 'json'
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    description: 'OpenAI fine-tuning API',
+    formats: ['jsonl'],
+    defaultFormat: 'jsonl'
+  },
+  {
+    id: 'anthropic',
+    name: 'Anthropic',
+    description: 'Anthropic Claude fine-tuning',
+    formats: ['jsonl'],
+    defaultFormat: 'jsonl'
+  },
+  {
+    id: 'generic',
+    name: 'Generic/Custom',
+    description: 'Standard formats for custom implementations',
+    formats: ['json', 'jsonl', 'csv'],
+    defaultFormat: 'json'
+  }
+];

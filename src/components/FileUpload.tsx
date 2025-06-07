@@ -5,6 +5,7 @@ import { FileService } from '../services/fileService';
 import { ACCEPTED_FILE_EXTENSIONS } from '../constants';
 import { Card, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
+import { Tooltip } from './ui/Tooltip';
 
 interface FileUploadProps {
   files: FileData[];
@@ -105,9 +106,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 className={isDragging ? 'text-primary' : 'text-gray-400'} 
               />
               <div className="text-center">
-                <p className={`text-lg font-medium ${isDragging ? 'text-primary' : 'text-gray-300'}`}>
-                  Drop files here or click to browse
-                </p>
+                <div className="flex items-center justify-center space-x-2">
+                  <p className={`text-lg font-medium ${isDragging ? 'text-primary' : 'text-gray-300'}`}>
+                    Drop files here or click to browse
+                  </p>
+                  <Tooltip content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." />
+                </div>
                 <p className="text-sm text-gray-400 mt-1">
                   Supports: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>

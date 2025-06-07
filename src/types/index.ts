@@ -80,3 +80,20 @@ export type BinaryMimeType =
   | 'application/pdf'
   | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
   | string;
+
+export type FineTuningMethod = 
+  | 'pytorch'
+  | 'together'
+  | 'huggingface'
+  | 'colab'
+  | 'openai'
+  | 'anthropic'
+  | 'generic';
+
+export interface FineTuningConfig {
+  id: FineTuningMethod;
+  name: string;
+  description: string;
+  formats: string[];
+  defaultFormat: string;
+}

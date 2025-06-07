@@ -10,6 +10,7 @@ import { DatasetPreview } from './components/DatasetPreview';
 import { Button } from './components/ui/Button';
 import { Alert } from './components/ui/Alert';
 import { Card, CardContent } from './components/ui/Card';
+import { Tooltip } from './components/ui/Tooltip';
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
@@ -46,7 +47,7 @@ const App: React.FC = () => {
           <div className="flex items-center justify-center mb-4">
             <Zap size={48} className="text-primary mr-3" />
             <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent">
-              AI Dataset Generator
+              Fine Format
             </h1>
           </div>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
@@ -103,12 +104,7 @@ const App: React.FC = () => {
                 <label htmlFor="webAugmentation" className="text-gray-200 font-medium cursor-pointer">
                   Enhance with Targeted Web Content
                 </label>
-                <div className="group relative">
-                  <HelpCircle size={18} className="text-gray-400 cursor-help" />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 z-10">
-                    AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning.
-                  </div>
-                </div>
+                <Tooltip content="AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
               </div>
               {enableWebAugmentation && (
                 <div className="mt-2 flex items-center text-sm text-gray-400">
@@ -160,7 +156,7 @@ const App: React.FC = () => {
         {/* Footer */}
         <footer className="text-center mt-16 pt-8 border-t border-gray-700">
           <p className="text-gray-500 text-sm">
-            &copy; {new Date().getFullYear()} AI Dataset Generator. Powered by Gemini AI.
+            &copy; {new Date().getFullYear()} Fine Format. Powered by Gemini AI.
           </p>
           <p className="text-gray-600 text-xs mt-1">
             Supports: .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs

@@ -1,9 +1,11 @@
-import React from 'react';
-import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp } from 'lucide-react';
-import { QAPair, GroundingMetadata } from '../types';
+import React, { useState } from 'react';
+import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp, ChevronDown } from 'lucide-react';
+import { QAPair, GroundingMetadata, FineTuningMethod } from '../types';
 import { Card, CardHeader, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
+import { Tooltip } from './ui/Tooltip';
 import { DownloadService } from '../services/downloadService';
+import { FINE_TUNING_METHODS } from '../constants';
 
 interface DatasetPreviewProps {
   qaPairs: QAPair[];
@@ -26,25 +28,31 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
   isAugmented = false,
   groundingMetadata,
 }) => {
+  const [selectedMethod, setSelectedMethod] = useState<FineTuningMethod>('generic');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  const selectedConfig = FINE_TUNING_METHODS.find(m => m.id === selectedMethod);
+
   const generateFilename = (format: string) => {
     const timestamp = new Date().toISOString().split('T')[0];
     const augmentedSuffix = isAugmented ? '_augmented' : '';
     const totalSources = sourceFileCount + sourceUrlCount;
-    return `dataset_${totalSources}_sources_${qaPairs.length}pairs${augmentedSuffix}_${timestamp}.${format}`;
+    const methodSuffix = selectedMethod !== 'generic' ? `_${selectedMethod}` : '';
+    return `fine_format_${totalSources}_sources_${qaPairs.length}pairs${augmentedSuffix}${methodSuffix}_${timestamp}.${format}`;
   };
 
-  const handleDownload = (format: 'csv' | 'jsonl' | 'json') => {
+  const handleDownload = (format: string) => {
     const filename = generateFilename(format);
     
     switch (format) {
       case 'csv':
-        DownloadService.downloadAsCSV(qaPairs, filename);
+        DownloadService.downloadAsCSV(qaPairs, filename, selectedMethod);
         break;
       case 'jsonl':
-        DownloadService.downloadAsJSONL(qaPairs, filename);
+        DownloadService.downloadAsJSONL(qaPairs, filename, selectedMethod);
         break;
       case 'json':
-        DownloadService.downloadAsJSON(qaPairs, filename);
+        DownloadService.downloadAsJSON(qaPairs, filename, selectedMethod);
         break;
     }
   };
@@ -228,41 +236,77 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {/* Download Options */}
       <Card>
         <CardHeader>
-          <h4 className="text-lg font-semibold text-gray-300 flex items-center">
-            <Download size={20} className="mr-2" />
-            Download Fine-Tuning Dataset
-          </h4>
+          <div className="flex items-center space-x-2">
+            <h4 className="text-lg font-semibold text-gray-300 flex items-center">
+              <Download size={20} className="mr-2" />
+              Download Fine-Tuning Dataset
+            </h4>
+            <Tooltip content="Select your fine-tuning platform to get the optimal dataset format. Each platform has specific requirements for data structure, labeling, and file format." />
+          </div>
           <p className="text-sm text-gray-400">
-            Export your generated dataset optimized for AI fine-tuning with correct/incorrect answer labels
+            Choose your fine-tuning method for optimized dataset formatting
           </p>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              icon={Download}
-              onClick={() => handleDownload('csv')}
-            >
-              Download CSV
-            </Button>
-            <Button
-              variant="secondary"
-              icon={Download}
-              onClick={() => handleDownload('jsonl')}
-            >
-              Download JSONL
-            </Button>
-            <Button
-              variant="secondary"
-              icon={Download}
-              onClick={() => handleDownload('json')}
-            >
-              Download JSON
-            </Button>
+          {/* Fine-tuning Method Selector */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Fine-Tuning Platform
+            </label>
+            <div className="relative">
+              <button
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 text-left flex items-center justify-between hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                <div>
+                  <div className="font-medium">{selectedConfig?.name}</div>
+                  <div className="text-sm text-gray-400">{selectedConfig?.description}</div>
+                </div>
+                <ChevronDown size={20} className={`text-gray-400 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+              
+              {isDropdownOpen && (
+                <div className="absolute z-10 w-full mt-1 bg-gray-700 border border-gray-600 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                  {FINE_TUNING_METHODS.map((method) => (
+                    <button
+                      key={method.id}
+                      onClick={() => {
+                        setSelectedMethod(method.id);
+                        setIsDropdownOpen(false);
+                      }}
+                      className={`w-full px-4 py-3 text-left hover:bg-gray-600 transition-colors ${
+                        selectedMethod === method.id ? 'bg-primary/20 text-primary-light' : 'text-gray-100'
+                      }`}
+                    >
+                      <div className="font-medium">{method.name}</div>
+                      <div className="text-sm text-gray-400">{method.description}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Formats: {method.formats.join(', ')}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Download Buttons */}
+          <div className="flex flex-wrap gap-3">
+            {selectedConfig?.formats.map((format) => (
+              <Button
+                key={format}
+                variant="secondary"
+                icon={Download}
+                onClick={() => handleDownload(format)}
+              >
+                Download {format.toUpperCase()}
+              </Button>
+            ))}
+          </div>
+          
           <div className="mt-4 p-3 bg-gray-700/30 rounded-lg">
             <p className="text-xs text-gray-400">
-              <strong>Fine-tuning format:</strong> Each Q&A pair includes correctness labels and confidence scores. 
+              <strong>{selectedConfig?.name} format:</strong> Each Q&A pair includes correctness labels and confidence scores optimized for {selectedConfig?.name}. 
               Incorrect answers are strategically included to improve model discrimination and reduce hallucination.
             </p>
           </div>
