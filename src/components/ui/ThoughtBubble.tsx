@@ -26,8 +26,8 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
       {/* Main thought bubble with cyberpunk styling */}
       <div className="absolute inset-0 bg-surface rounded-full border-2 border-primary relative overflow-hidden"
            style={{
-             background: 'linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.05))',
-             boxShadow: '0 0 20px rgba(0, 255, 65, 0.3), inset 0 0 20px rgba(0, 255, 65, 0.1)',
+             background: 'linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04))',
+             boxShadow: '0 0 10px rgba(0, 255, 65, 0.2), inset 0 0 10px rgba(0, 255, 65, 0.05)',
              animation: 'glow-pulse 2s ease-in-out infinite alternate'
            }}>
         
@@ -36,7 +36,7 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
           <div 
             className={`${dotSizes[size]} bg-primary rounded-full`}
             style={{ 
-              boxShadow: '0 0 10px #00FF41',
+              boxShadow: '0 0 5px #00FF41',
               animation: 'bounce 1.4s infinite',
               animationDelay: '0ms'
             }}
@@ -44,7 +44,7 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
           <div 
             className={`${dotSizes[size]} bg-primary rounded-full`}
             style={{ 
-              boxShadow: '0 0 10px #00FF41',
+              boxShadow: '0 0 5px #00FF41',
               animation: 'bounce 1.4s infinite',
               animationDelay: '200ms'
             }}
@@ -52,7 +52,7 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
           <div 
             className={`${dotSizes[size]} bg-primary rounded-full`}
             style={{ 
-              boxShadow: '0 0 10px #00FF41',
+              boxShadow: '0 0 5px #00FF41',
               animation: 'bounce 1.4s infinite',
               animationDelay: '400ms'
             }}
@@ -65,7 +65,7 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
             className="absolute top-0 left-0 right-0 h-px bg-primary opacity-70"
             style={{
               animation: 'scanline 2s linear infinite',
-              boxShadow: '0 0 5px #00FF41'
+              boxShadow: '0 0 3px #00FF41'
             }}
           />
         </div>
@@ -74,14 +74,14 @@ export const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({
       {/* Small bubble tail with neon glow */}
       <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-surface rounded-full border border-primary"
            style={{
-             background: 'rgba(0, 255, 65, 0.1)',
-             boxShadow: '0 0 10px rgba(0, 255, 65, 0.3)',
+             background: 'rgba(0, 255, 65, 0.08)',
+             boxShadow: '0 0 5px rgba(0, 255, 65, 0.2)',
              animation: 'glow-pulse 2s ease-in-out infinite alternate'
            }} />
       <div className="absolute -bottom-2.5 right-0 w-1.5 h-1.5 bg-surface rounded-full border border-primary/50"
            style={{
-             background: 'rgba(0, 255, 65, 0.05)',
-             boxShadow: '0 0 5px rgba(0, 255, 65, 0.2)',
+             background: 'rgba(0, 255, 65, 0.04)',
+             boxShadow: '0 0 3px rgba(0, 255, 65, 0.15)',
              animation: 'glow-pulse 2s ease-in-out infinite alternate'
            }} />
     </div>

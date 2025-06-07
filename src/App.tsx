@@ -53,14 +53,14 @@ const App: React.FC = () => {
         <header className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
             <Zap size={56} className="text-primary mr-4 animate-pulse" style={{
-              filter: 'drop-shadow(0 0 10px #00FF41)',
+              filter: 'drop-shadow(0 0 5px #00FF41)',
               animation: 'glow-pulse 2s ease-in-out infinite alternate'
             }} />
             <h1 
               className="text-5xl md:text-7xl font-black neon-text glitch font-mono tracking-wider"
               data-text="FINE FORMAT"
               style={{
-                textShadow: '0 0 10px #00FF41, 0 0 20px #00FF41, 0 0 30px #00FF41',
+                textShadow: '0 0 5px #00FF41, 0 0 10px #00FF41, 0 0 15px #00FF41',
                 letterSpacing: '0.1em'
               }}
             >
@@ -127,7 +127,7 @@ const App: React.FC = () => {
                     className="h-6 w-6 rounded border-2 border-primary bg-surface text-primary focus:ring-primary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
                     style={{
                       accentColor: '#00FF41',
-                      filter: 'drop-shadow(0 0 5px #00FF41)'
+                      filter: 'drop-shadow(0 0 3px #00FF41)'
                     }}
                   />
                 </div>
@@ -139,7 +139,7 @@ const App: React.FC = () => {
               {enableWebAugmentation && (
                 <div className="mt-4 flex items-center text-accent font-medium">
                   <Search size={18} className="mr-3 animate-pulse" style={{
-                    filter: 'drop-shadow(0 0 5px #00FFFF)'
+                    filter: 'drop-shadow(0 0 3px #00FFFF)'
                   }} />
                   <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> will enhance content quality and coverage
                 </div>
@@ -191,12 +191,17 @@ const App: React.FC = () => {
         {/* Footer */}
         <footer className="text-center mt-20 pt-8 border-t border-border relative">
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
-          <p className="text-muted text-sm font-mono">
+          <p className="text-muted text-sm font-mono mb-2">
             &copy; {new Date().getFullYear()} <span className="neon-text">FINE FORMAT</span>. 
             <span className="text-accent ml-2">POWERED BY GEMINI AI</span>
           </p>
-          <p className="text-muted text-xs mt-2 font-mono">
+          <p className="text-muted text-xs mb-3 font-mono">
             <span className="text-primary">SUPPORTS:</span> .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
+          </p>
+          <p className="text-muted text-sm font-mono">
+            Made with <span className="text-secondary neon-text-secondary">&lt;3</span> and{' '}
+            <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
+            <span className="text-foreground">brucethegoose.eth</span>
           </p>
         </footer>
       </div>

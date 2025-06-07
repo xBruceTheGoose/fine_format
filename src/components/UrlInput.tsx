@@ -88,7 +88,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({
               <Globe 
                 size={24} 
                 className="mr-3 text-accent" 
-                style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
               />
               ADD URLs
             </h3>
@@ -152,7 +152,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({
                     <Link 
                       size={24} 
                       className="text-accent flex-shrink-0" 
-                      style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                      style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-foreground font-semibold truncate font-mono">

@@ -42,7 +42,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
             size={18} 
             className="text-accent hover:text-primary transition-colors duration-200" 
             style={{
-              filter: 'drop-shadow(0 0 3px currentColor)'
+              filter: 'drop-shadow(0 0 2px currentColor)'
             }}
           />
         )}
@@ -54,14 +54,14 @@ export const Tooltip: React.FC<TooltipProps> = ({
                style={{
                  background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.95), rgba(26, 26, 26, 0.9))',
                  backdropFilter: 'blur(10px)',
-                 boxShadow: '0 0 20px rgba(0, 255, 65, 0.2), 0 8px 32px rgba(0, 0, 0, 0.3)',
-                 border: '1px solid rgba(0, 255, 65, 0.3)'
+                 boxShadow: '0 0 10px rgba(0, 255, 65, 0.15), 0 8px 32px rgba(0, 0, 0, 0.3)',
+                 border: '1px solid rgba(0, 255, 65, 0.2)'
                }}>
             {content}
           </div>
           <div className={`absolute w-0 h-0 border-4 ${arrowClasses[position]}`} 
                style={{
-                 filter: 'drop-shadow(0 0 3px rgba(0, 255, 65, 0.2))'
+                 filter: 'drop-shadow(0 0 2px rgba(0, 255, 65, 0.15))'
                }} />
         </div>
       )}

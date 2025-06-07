@@ -31,13 +31,13 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
               <AlertCircle 
                 size={32} 
                 className="text-error" 
-                style={{ filter: 'drop-shadow(0 0 10px #FF4444)' }}
+                style={{ filter: 'drop-shadow(0 0 5px #FF4444)' }}
               />
             ) : (
               <CheckCircle 
                 size={32} 
                 className="text-success" 
-                style={{ filter: 'drop-shadow(0 0 10px #00FF41)' }}
+                style={{ filter: 'drop-shadow(0 0 5px #00FF41)' }}
               />
             )}
             
@@ -47,7 +47,7 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
                 isComplete ? 'text-success' : 
                 'text-primary'
               }`} style={{
-                textShadow: '0 0 5px currentColor'
+                textShadow: '0 0 3px currentColor'
               }}>
                 {currentStep}
               </p>

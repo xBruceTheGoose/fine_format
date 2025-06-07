@@ -44,13 +44,13 @@ export const Button: React.FC<ButtonProps> = ({
       {loading ? (
         <div className="flex items-center">
           <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-current mr-3" 
-               style={{ filter: 'drop-shadow(0 0 5px currentColor)' }} />
+               style={{ filter: 'drop-shadow(0 0 3px currentColor)' }} />
           <span className="neon-text">PROCESSING...</span>
         </div>
       ) : (
         <>
           {Icon && (
-            <Icon size={20} className="mr-3" style={{ filter: 'drop-shadow(0 0 5px currentColor)' }} />
+            <Icon size={20} className="mr-3" style={{ filter: 'drop-shadow(0 0 3px currentColor)' }} />
           )}
           {children}
         </>

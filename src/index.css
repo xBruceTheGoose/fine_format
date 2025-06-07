@@ -12,12 +12,12 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     background: 
       linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 100%),
-      radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.05) 0%, transparent 70%);
+      radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.03) 0%, transparent 70%);
   }
 
   h1, h2, h3, h4, h5, h6 {
     @apply text-primary;
-    text-shadow: 0 0 10px currentColor;
+    text-shadow: 0 0 5px currentColor;
     animation: glow-pulse 3s ease-in-out infinite alternate;
   }
 }
@@ -33,33 +33,33 @@
     backdrop-filter: blur(10px);
     box-shadow: 
       0 8px 32px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(0, 255, 65, 0.1),
-      inset 0 1px 0 rgba(0, 255, 65, 0.1);
+      0 0 0 1px rgba(0, 255, 65, 0.05),
+      inset 0 1px 0 rgba(0, 255, 65, 0.05);
   }
 
   .cyber-button {
     @apply relative overflow-hidden;
-    background: linear-gradient(45deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.2));
+    background: linear-gradient(45deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.15));
     border: 1px solid #00FF41;
     box-shadow: 
-      0 0 10px rgba(0, 255, 65, 0.3),
-      inset 0 1px 0 rgba(0, 255, 65, 0.2);
+      0 0 5px rgba(0, 255, 65, 0.2),
+      inset 0 1px 0 rgba(0, 255, 65, 0.1);
     transition: all 0.3s ease;
   }
 
   .cyber-button:hover {
-    background: linear-gradient(45deg, rgba(0, 255, 65, 0.2), rgba(0, 255, 65, 0.3));
+    background: linear-gradient(45deg, rgba(0, 255, 65, 0.15), rgba(0, 255, 65, 0.2));
     box-shadow: 
-      0 0 20px rgba(0, 255, 65, 0.5),
-      inset 0 1px 0 rgba(0, 255, 65, 0.3);
+      0 0 10px rgba(0, 255, 65, 0.3),
+      inset 0 1px 0 rgba(0, 255, 65, 0.2);
     transform: translateY(-1px);
   }
 
   .cyber-button:active {
     transform: translateY(0);
     box-shadow: 
-      0 0 15px rgba(0, 255, 65, 0.4),
-      inset 0 1px 0 rgba(0, 255, 65, 0.2);
+      0 0 8px rgba(0, 255, 65, 0.25),
+      inset 0 1px 0 rgba(0, 255, 65, 0.15);
   }
 
   .cyber-input {
@@ -68,7 +68,7 @@
     border-color: #333333;
     box-shadow: 
       inset 0 2px 4px rgba(0, 0, 0, 0.3),
-      0 0 0 1px rgba(0, 255, 65, 0.1);
+      0 0 0 1px rgba(0, 255, 65, 0.05);
     transition: all 0.3s ease;
   }
 
@@ -76,33 +76,33 @@
     border-color: #00FF41;
     box-shadow: 
       inset 0 2px 4px rgba(0, 0, 0, 0.3),
-      0 0 0 2px rgba(0, 255, 65, 0.3),
-      0 0 10px rgba(0, 255, 65, 0.2);
+      0 0 0 2px rgba(0, 255, 65, 0.2),
+      0 0 5px rgba(0, 255, 65, 0.1);
     outline: none;
   }
 
   .neon-text {
     color: #00FF41;
     text-shadow: 
-      0 0 5px #00FF41,
-      0 0 10px #00FF41,
-      0 0 15px #00FF41;
+      0 0 3px #00FF41,
+      0 0 6px #00FF41,
+      0 0 9px #00FF41;
   }
 
   .neon-text-secondary {
     color: #FF0080;
     text-shadow: 
-      0 0 5px #FF0080,
-      0 0 10px #FF0080,
-      0 0 15px #FF0080;
+      0 0 3px #FF0080,
+      0 0 6px #FF0080,
+      0 0 9px #FF0080;
   }
 
   .neon-text-accent {
     color: #00FFFF;
     text-shadow: 
-      0 0 5px #00FFFF,
-      0 0 10px #00FFFF,
-      0 0 15px #00FFFF;
+      0 0 3px #00FFFF,
+      0 0 6px #00FFFF,
+      0 0 9px #00FFFF;
   }
 
   .progress-bar-cyber {
@@ -111,63 +111,63 @@
       #39FF6B 50%, 
       #00FF41 100%);
     box-shadow: 
-      0 0 10px #00FF41,
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      0 0 5px #00FF41,
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
     animation: progress-glow 2s ease-in-out infinite alternate;
   }
 
   @keyframes progress-glow {
     0% {
       box-shadow: 
-        0 0 10px #00FF41,
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        0 0 5px #00FF41,
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
     }
     100% {
       box-shadow: 
-        0 0 20px #00FF41,
-        0 0 30px rgba(0, 255, 65, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        0 0 10px #00FF41,
+        0 0 15px rgba(0, 255, 65, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
   }
 
   .status-correct {
     @apply text-success;
-    text-shadow: 0 0 5px currentColor;
+    text-shadow: 0 0 3px currentColor;
   }
 
   .status-incorrect {
     @apply text-error;
-    text-shadow: 0 0 5px currentColor;
+    text-shadow: 0 0 3px currentColor;
   }
 
   .status-processing {
     @apply text-warning;
-    text-shadow: 0 0 5px currentColor;
+    text-shadow: 0 0 3px currentColor;
     animation: flicker 1s infinite;
   }
 
   .cyber-alert-error {
-    background: linear-gradient(135deg, rgba(255, 68, 68, 0.1), rgba(255, 68, 68, 0.05));
+    background: linear-gradient(135deg, rgba(255, 68, 68, 0.08), rgba(255, 68, 68, 0.04));
     border-color: #FF4444;
-    box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+    box-shadow: 0 0 5px rgba(255, 68, 68, 0.2);
   }
 
   .cyber-alert-warning {
-    background: linear-gradient(135deg, rgba(255, 255, 0, 0.1), rgba(255, 255, 0, 0.05));
+    background: linear-gradient(135deg, rgba(255, 255, 0, 0.08), rgba(255, 255, 0, 0.04));
     border-color: #FFFF00;
-    box-shadow: 0 0 10px rgba(255, 255, 0, 0.3);
+    box-shadow: 0 0 5px rgba(255, 255, 0, 0.2);
   }
 
   .cyber-alert-success {
-    background: linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.05));
+    background: linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04));
     border-color: #00FF41;
-    box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+    box-shadow: 0 0 5px rgba(0, 255, 65, 0.2);
   }
 
   .cyber-alert-info {
-    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), rgba(0, 255, 255, 0.05));
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.08), rgba(0, 255, 255, 0.04));
     border-color: #00FFFF;
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+    box-shadow: 0 0 5px rgba(0, 255, 255, 0.2);
   }
 }
 
@@ -180,14 +180,14 @@
 
 /* Selection styling */
 ::selection {
-  background: rgba(0, 255, 65, 0.3);
+  background: rgba(0, 255, 65, 0.2);
   color: #00FF41;
-  text-shadow: 0 0 5px #00FF41;
+  text-shadow: 0 0 3px #00FF41;
 }
 
 /* Focus visible styling */
 *:focus-visible {
   outline: 2px solid #00FF41;
   outline-offset: 2px;
-  box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+  box-shadow: 0 0 5px rgba(0, 255, 65, 0.3);
 }

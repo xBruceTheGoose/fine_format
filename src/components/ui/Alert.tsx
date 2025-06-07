@@ -40,12 +40,12 @@ export const Alert: React.FC<AlertProps> = ({
   return (
     <div className={`p-6 rounded-lg border flex items-start ${classes} ${className} font-mono`} role="alert">
       <Icon size={24} className="mr-4 flex-shrink-0 mt-1" style={{
-        filter: 'drop-shadow(0 0 5px currentColor)'
+        filter: 'drop-shadow(0 0 3px currentColor)'
       }} />
       <div className="flex-grow">
         {title && (
-          <h4 className="font-bold mb-2 text-lg tracking-wide\" style={{
-            textShadow: '0 0 5px currentColor'
+          <h4 className="font-bold mb-2 text-lg tracking-wide" style={{
+            textShadow: '0 0 3px currentColor'
           }}>
             {title}
           </h4>
@@ -58,7 +58,7 @@ export const Alert: React.FC<AlertProps> = ({
           className="ml-4 -mr-1 -my-1 p-2 rounded hover:bg-white/10 focus:outline-none transition-all duration-200"
           aria-label="Close alert"
           style={{
-            filter: 'drop-shadow(0 0 3px currentColor)'
+            filter: 'drop-shadow(0 0 2px currentColor)'
           }}
         >
           <X size={20} />

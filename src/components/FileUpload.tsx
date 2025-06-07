@@ -101,7 +101,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             `}
             style={{
               background: isDragging 
-                ? 'linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.05))'
+                ? 'linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04))'
                 : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))'
             }}
           >
@@ -110,7 +110,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 size={64} 
                 className={`${isDragging ? 'text-primary animate-bounce' : 'text-accent'} transition-all duration-300`}
                 style={{
-                  filter: `drop-shadow(0 0 10px ${isDragging ? '#00FF41' : '#00FFFF'})`
+                  filter: `drop-shadow(0 0 5px ${isDragging ? '#00FF41' : '#00FFFF'})`
                 }}
               />
               <div className="text-center">
@@ -165,7 +165,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                     <FileText 
                       size={24} 
                       className="text-accent flex-shrink-0" 
-                      style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                      style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-foreground font-semibold truncate font-mono">
