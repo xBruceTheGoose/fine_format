@@ -278,7 +278,7 @@ const App: React.FC = () => {
                       <Brain size={18} className="mr-3 animate-pulse" style={{
                         filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }} />
-                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span>     identifies missing coverage areas
+                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span>   -    identifies missing coverage areas
                     </div>
                     {isDeepSeekReady ? (
                       <div className="text-success text-sm font-mono ml-7">
