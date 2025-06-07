@@ -98,26 +98,26 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
             <Lightbulb size={28} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }} />
             GENERATED DATASET OVERVIEW
           </h3>
-          <p className="text-foreground font-mono mt-2">
+          <div className="text-foreground font-mono mt-2">
             <span className="neon-text">{qaPairs.length} Q&A PAIRS</span> from{' '}
             <span className="text-accent">{totalSources} source{totalSources !== 1 ? 's' : ''}</span>
             {sourceFileCount > 0 && ` (${sourceFileCount} file${sourceFileCount !== 1 ? 's' : ''})`}
             {sourceUrlCount > 0 && ` (${sourceUrlCount} URL${sourceUrlCount !== 1 ? 's' : ''})`}
-            <div className="flex items-center space-x-4 mt-3">
-              {isAugmented && (
-                <span className="inline-flex items-center px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-bold border border-accent/30">
-                  <Search size={14} className="mr-2" />
-                  WEB ENHANCED
-                </span>
-              )}
-              {gapFillingEnabled && syntheticPairCount > 0 && (
-                <span className="inline-flex items-center px-3 py-1 bg-secondary/20 text-secondary rounded-full text-sm font-bold border border-secondary/30">
-                  <Brain size={14} className="mr-2" />
-                  GAP FILLED
-                </span>
-              )}
-            </div>
-          </p>
+          </div>
+          <div className="flex items-center space-x-4 mt-3">
+            {isAugmented && (
+              <span className="inline-flex items-center px-3 py-1 bg-accent/20 text-accent rounded-full text-sm font-bold border border-accent/30">
+                <Search size={14} className="mr-2" />
+                WEB ENHANCED
+              </span>
+            )}
+            {gapFillingEnabled && syntheticPairCount > 0 && (
+              <span className="inline-flex items-center px-3 py-1 bg-secondary/20 text-secondary rounded-full text-sm font-bold border border-secondary/30">
+                <Brain size={14} className="mr-2" />
+                GAP FILLED
+              </span>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">

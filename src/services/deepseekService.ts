@@ -47,6 +47,9 @@ class DeepSeekService {
     });
 
     if (!response.ok) {
+      if (response.status === 402) {
+        throw new Error(`DeepSeek API billing error (402): Your DeepSeek account requires payment or has insufficient funds. Please check your account billing status at https://platform.deepseek.com/billing`);
+      }
       throw new Error(`DeepSeek API error: ${response.status} ${response.statusText}`);
     }
 

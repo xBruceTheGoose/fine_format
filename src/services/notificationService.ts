@@ -197,9 +197,6 @@ class NotificationService {
         icon: '/favicon.ico',
         tag: 'fine-format-complete',
         requireInteraction: true,
-        actions: [
-          { action: 'view', title: 'View Results' }
-        ]
       });
 
       notification.onclick = () => {
