@@ -350,7 +350,7 @@ const App: React.FC = () => {
             &copy; {new Date().getFullYear()} DappGoose Labs DAO.
           </p>
           <p className="text-gray-400 text-sm font-mono">
-            Made with <span className="text-secondary neon-text-secondary">{'<3'}</span> and{' '}
+            Made with <span className="text-red-500 neon-text-red">{'<3'}</span> and{' '}
             <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
             <span className="text-foreground">brucethegoose.eth</span>
           </p>

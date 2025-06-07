@@ -105,6 +105,14 @@
       0 0 9px #00FFFF;
   }
 
+  .neon-text-red {
+    color: #FF0080;
+    text-shadow: 
+      0 0 3px #FF0080,
+      0 0 6px #FF0080,
+      0 0 9px #FF0080;
+  }
+
   .progress-bar-cyber {
     background: linear-gradient(90deg, 
       #00FF41 0%, 
