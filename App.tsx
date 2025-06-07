@@ -288,9 +288,9 @@ const App: React.FC = () => {
         <FileUploadArea onChange={handleFileChange} disabled={isLoading} multiple={true} />
         
         {apiKeyMissingWarning && (
-            <AlertMessage type="warning" message="Warning: VITE_API_KEY is not set. The application will not be able to communicate with the Gemini API." />
+            <AlertMessage type="warning\" message="Warning: VITE_API_KEY is not set. The application will not be able to communicate with the Gemini API." />
         )}
-        {overallError && <AlertMessage type="error" message={overallError} onClose={() => setOverallError(null)} />}
+        {overallError && <AlertMessage type="error\" message={overallError} onClose={() => setOverallError(null)} />}
 
         {filesData.length > 0 && (
           <div className="space-y-3">
