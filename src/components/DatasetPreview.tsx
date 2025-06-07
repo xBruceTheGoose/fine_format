@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp, ChevronDown } from 'lucide-react';
+import { MessageSquare, Bot, Download, Search, Lightbulb, CheckCircle, XCircle, Target, TrendingUp, ChevronDown, FileText } from 'lucide-react';
 import { QAPair, GroundingMetadata, FineTuningMethod } from '../types';
 import { Card, CardHeader, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 import { DownloadService } from '../services/downloadService';
+import { GuideService } from '../services/guideService';
 import { FINE_TUNING_METHODS } from '../constants';
 
 interface DatasetPreviewProps {
@@ -55,6 +56,11 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
         DownloadService.downloadAsJSON(qaPairs, filename, selectedMethod);
         break;
     }
+  };
+
+  const handleDownloadGuide = () => {
+    const totalSources = sourceFileCount + sourceUrlCount;
+    GuideService.downloadGuide(selectedMethod, qaPairs, totalSources, identifiedThemes);
   };
 
   if (qaPairs.length === 0) {
@@ -291,17 +297,43 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           </div>
 
           {/* Download Buttons */}
-          <div className="flex flex-wrap gap-3">
-            {selectedConfig?.formats.map((format) => (
-              <Button
-                key={format}
-                variant="secondary"
-                icon={Download}
-                onClick={() => handleDownload(format)}
-              >
-                Download {format.toUpperCase()}
-              </Button>
-            ))}
+          <div className="space-y-4">
+            <div className="flex flex-wrap gap-3">
+              {selectedConfig?.formats.map((format) => (
+                <Button
+                  key={format}
+                  variant="secondary"
+                  icon={Download}
+                  onClick={() => handleDownload(format)}
+                >
+                  Download {format.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+
+            {/* Fine-Tuning Guide Download */}
+            <div className="border-t border-gray-600 pt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="text-sm font-medium text-gray-300 flex items-center">
+                    <FileText size={16} className="mr-2 text-primary" />
+                    Fine-Tuning Guide
+                  </h5>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Complete setup instructions and optimal parameters for {selectedConfig?.name}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={FileText}
+                  onClick={handleDownloadGuide}
+                  className="ml-4"
+                >
+                  Download Guide
+                </Button>
+              </div>
+            </div>
           </div>
           
           <div className="mt-4 p-3 bg-gray-700/30 rounded-lg">
