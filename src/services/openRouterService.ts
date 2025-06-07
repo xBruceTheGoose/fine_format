@@ -81,10 +81,29 @@ class OpenRouterService {
       jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
     }
 
+    // Additional cleanup for common JSON formatting issues
+    jsonStr = jsonStr
+      // Fix unescaped quotes within strings (basic attempt)
+      .replace(/([^\\])"([^"]*[^\\])"([^,}\]])/g, '$1\\"$2\\"$3')
+      // Remove any trailing commas before closing brackets/braces
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Ensure proper spacing around colons and commas
+      .replace(/:\s*([^",{\[\s])/g, ': "$1"')
+      .replace(/,\s*([^",{\[\s])/g, ', "$1"');
+
     try {
-      return JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
+      
+      // Validate that it's an array
+      if (!Array.isArray(parsed)) {
+        throw new Error('Response is not a JSON array');
+      }
+      
+      return parsed;
     } catch (error) {
       console.error('Failed to parse JSON response from OpenRouter:', error);
+      console.error('Raw response:', responseText.substring(0, 500));
+      console.error('Processed JSON string:', jsonStr.substring(0, 500));
       throw new Error(`Invalid JSON response from OpenRouter: ${responseText.substring(0, 200)}...`);
     }
   }
@@ -204,9 +223,27 @@ REFERENCE CONTENT:
 ${combinedContent.substring(0, 10000)}${combinedContent.length > 10000 ? '...' : ''}
 ---
 
-CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response.
+ABSOLUTELY CRITICAL JSON FORMATTING REQUIREMENTS - THESE ARE MANDATORY AND NON-NEGOTIABLE:
 
-Generate exactly ${targetCount} additional synthetic Q&A pairs as a pure JSON array:
+1. YOUR RESPONSE MUST BE A VALID, COMPLETE, AND PARSEABLE JSON ARRAY
+2. ALL STRING VALUES MUST BE PROPERLY DOUBLE-QUOTED AND ESCAPED
+3. NO CONTROL CHARACTERS (newlines, tabs, carriage returns) WITHIN STRING VALUES
+4. NO UNESCAPED QUOTES OR BACKSLASHES WITHIN STRING VALUES
+5. ALL STRINGS MUST BE TERMINATED PROPERLY - NO UNTERMINATED STRINGS
+6. USE \\n for line breaks within strings, \\t for tabs, \\" for quotes
+7. ENSURE PROPER COMMA PLACEMENT - NO TRAILING COMMAS
+8. THE RESPONSE MUST START WITH '[' AND END WITH ']'
+9. EACH OBJECT MUST BE PROPERLY CLOSED WITH '}'
+10. ALL PROPERTY NAMES MUST BE DOUBLE-QUOTED
+
+FORMATTING EXAMPLE FOR STRING VALUES:
+- CORRECT: "This is a proper string with \\"escaped quotes\\" and \\n line breaks"
+- INCORRECT: "This is improper with "unescaped quotes" and 
+actual line breaks"
+
+CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response. The JSON must be valid and parseable by standard JSON parsers.
+
+Generate exactly ${targetCount} additional synthetic Q&A pairs as a pure, valid JSON array:
     `.trim();
 
     try {
