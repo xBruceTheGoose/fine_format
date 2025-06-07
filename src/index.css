@@ -90,11 +90,11 @@
   }
 
   .neon-text-secondary {
-    color: #FF0080;
+    color: #dc1aff;
     text-shadow: 
-      0 0 3px #FF0080,
-      0 0 6px #FF0080,
-      0 0 9px #FF0080;
+      0 0 3px #dc1aff,
+      0 0 6px #dc1aff,
+      0 0 9px #dc1aff;
   }
 
   .neon-text-accent {
@@ -147,9 +147,9 @@
   }
 
   .cyber-alert-error {
-    background: linear-gradient(135deg, rgba(255, 0, 128, 0.08), rgba(255, 0, 128, 0.04));
-    border-color: #FF0080;
-    box-shadow: 0 0 5px rgba(255, 0, 128, 0.2);
+    background: linear-gradient(135deg, rgba(220, 26, 255, 0.08), rgba(220, 26, 255, 0.04));
+    border-color: #dc1aff;
+    box-shadow: 0 0 5px rgba(220, 26, 255, 0.2);
   }
 
   .cyber-alert-warning {

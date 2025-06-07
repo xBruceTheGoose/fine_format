@@ -262,8 +262,8 @@ const App: React.FC = () => {
                       disabled={isProcessing || !isGeminiReady}
                       className="h-6 w-6 rounded border-2 border-secondary bg-surface text-secondary focus:ring-secondary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
                       style={{
-                        accentColor: '#FF0080',
-                        filter: 'drop-shadow(0 0 3px #FF0080)'
+                        accentColor: '#dc1aff',
+                        filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }}
                     />
                   </div>
@@ -276,7 +276,7 @@ const App: React.FC = () => {
                   <div className="mt-4 space-y-2">
                     <div className="flex items-center text-secondary font-medium">
                       <Brain size={18} className="mr-3 animate-pulse" style={{
-                        filter: 'drop-shadow(0 0 3px #FF0080)'
+                        filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }} />
                       <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> identifies missing coverage areas
                     </div>

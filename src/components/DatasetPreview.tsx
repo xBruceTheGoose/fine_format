@@ -155,7 +155,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     <p className="text-secondary font-bold text-2xl font-mono">{validatedPairCount}</p>
                     <p className="text-secondary font-semibold font-mono tracking-wide">SYNTHETIC PAIRS</p>
                   </div>
-                  <Zap size={32} className="text-secondary" style={{ filter: 'drop-shadow(0 0 5px #FF0080)' }} />
+                  <Zap size={32} className="text-secondary" style={{ filter: 'drop-shadow(0 0 5px #dc1aff)' }} />
                 </div>
               </div>
             )}
@@ -165,7 +165,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           {syntheticPairCount > 0 && (
             <div className="mb-8 p-4 bg-surface/30 rounded-lg border border-border">
               <h4 className="text-lg font-bold text-primary mb-3 flex items-center font-mono tracking-wide">
-                <Brain size={20} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
+                <Brain size={20} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #dc1aff)' }} />
                 DATASET COMPOSITION
               </h4>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-mono">
@@ -189,7 +189,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
           {identifiedGaps.length > 0 && (
             <div className="mb-8">
               <h4 className="text-xl font-bold text-primary mb-4 flex items-center font-mono tracking-wide">
-                <Brain size={24} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
+                <Brain size={24} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #dc1aff)' }} />
                 KNOWLEDGE GAPS ADDRESSED ({identifiedGaps.length})
               </h4>
               <div className="space-y-3">
@@ -198,7 +198,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     key={gap.id}
                     className="p-4 bg-surface/50 rounded-lg border border-border"
                     style={{
-                      background: 'linear-gradient(135deg, rgba(255, 0, 128, 0.05), rgba(255, 0, 128, 0.02))'
+                      background: 'linear-gradient(135deg, rgba(220, 26, 255, 0.05), rgba(220, 26, 255, 0.02))'
                     }}
                   >
                     <div className="flex items-start justify-between">
@@ -294,7 +294,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                   </div>
                 </div>
                 <div className="flex items-start">
-                  <Bot size={24} className="text-secondary mr-3 mt-1 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 3px #FF0080)' }} />
+                  <Bot size={24} className="text-secondary mr-3 mt-1 flex-shrink-0" style={{ filter: 'drop-shadow(0 0 3px #dc1aff)' }} />
                   <div>
                     <p className="font-bold text-foreground font-mono tracking-wide">ANSWER:</p>
                     <p className="text-foreground font-mono mt-2 leading-relaxed">{pair.model}</p>
