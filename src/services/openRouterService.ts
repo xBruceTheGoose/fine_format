@@ -124,90 +124,7 @@ ${content}
     }
   }
 
-  public async identifyKnowledgeGaps(
-    combinedContent: string,
-    identifiedThemes: string[],
-    existingQAPairs: QAPair[],
-    fineTuningGoal: FineTuningGoal = 'knowledge'
-  ): Promise<KnowledgeGap[]> {
-    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const existingQuestions = existingQAPairs.map(pair => pair.user);
-    
-    const prompt = `
-You are an expert knowledge analyst specializing in identifying gaps in Q&A datasets for ${goalConfig?.name} fine-tuning.
-
-TASK: Analyze the provided content and existing Q&A pairs to identify knowledge gaps that should be filled with additional synthetic Q&A pairs.
-
-FINE-TUNING GOAL: ${goalConfig?.name}
-FOCUS: ${goalConfig?.promptFocus}
-
-CONTENT THEMES: ${identifiedThemes.join(', ')}
-
-EXISTING Q&A PAIRS (${existingQAPairs.length} total):
-${existingQuestions.slice(0, 20).map((q, i) => `${i + 1}. ${q}`).join('\n')}
-${existingQuestions.length > 20 ? `... and ${existingQuestions.length - 20} more questions` : ''}
-
-ANALYSIS REQUIREMENTS:
-1. Identify 5-10 significant knowledge gaps not covered by existing Q&A pairs
-2. Focus on gaps that align with the ${goalConfig?.name} objective
-3. Prioritize gaps based on importance for comprehensive fine-tuning
-4. Consider different question types and complexity levels
-5. Ensure gaps are specific enough to generate targeted Q&A pairs
-
-For each gap, provide:
-- Clear description of what's missing
-- Related theme from the identified themes
-- Priority level (high/medium/low)
-- Suggested question types that would fill this gap
-- Related concepts that should be covered
-
-Format as JSON array with this structure:
-[
-  {
-    "id": "gap_1",
-    "description": "Detailed description of the knowledge gap",
-    "theme": "related_theme_from_list",
-    "priority": "high|medium|low",
-    "suggestedQuestionTypes": ["type1", "type2"],
-    "relatedConcepts": ["concept1", "concept2"]
-  }
-]
-
-CONTENT TO ANALYZE:
----
-${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '...' : ''}
----
-
-JSON Output:
-    `.trim();
-
-    try {
-      const response = await this.makeRequest([
-        { role: 'user', content: prompt }
-      ], 0.3); // Lower temperature for more focused analysis
-
-      const gaps = this.parseJsonResponse(response);
-
-      if (!Array.isArray(gaps)) {
-        throw new Error('Response is not a valid JSON array');
-      }
-
-      return gaps.filter((gap): gap is KnowledgeGap =>
-        gap &&
-        typeof gap.id === 'string' &&
-        typeof gap.description === 'string' &&
-        typeof gap.theme === 'string' &&
-        ['high', 'medium', 'low'].includes(gap.priority) &&
-        Array.isArray(gap.suggestedQuestionTypes) &&
-        Array.isArray(gap.relatedConcepts)
-      ).slice(0, 10); // Limit to 10 gaps max
-
-    } catch (error: any) {
-      console.error('Knowledge gap identification failed:', error);
-      throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
-    }
-  }
-
+  // NEW METHOD: Generate synthetic Q&A pairs based on Gemini-identified knowledge gaps
   public async generateSyntheticQAPairs(
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
@@ -218,21 +135,21 @@ JSON Output:
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
 
     const prompt = `
-You are an expert Q&A generator creating synthetic training data for ${goalConfig?.name} fine-tuning.
+You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality training data for ${goalConfig?.name} fine-tuning.
 
-TASK: Generate ${targetCount} high-quality Q&A pairs that specifically address the identified knowledge gaps.
+TASK: Generate ${targetCount} synthetic Q&A pairs that specifically address the knowledge gaps identified by advanced analysis of the existing dataset.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-KNOWLEDGE GAPS TO ADDRESS:
+KNOWLEDGE GAPS TO ADDRESS (identified by Gemini analysis):
 ${knowledgeGaps.map((gap, i) => `
 ${i + 1}. GAP ID: ${gap.id}
    DESCRIPTION: ${gap.description}
    THEME: ${gap.theme}
    PRIORITY: ${gap.priority}
-   SUGGESTED TYPES: ${gap.suggestedQuestionTypes.join(', ')}
-   CONCEPTS: ${gap.relatedConcepts.join(', ')}
+   SUGGESTED QUESTION TYPES: ${gap.suggestedQuestionTypes.join(', ')}
+   RELATED CONCEPTS: ${gap.relatedConcepts.join(', ')}
 `).join('\n')}
 
 GENERATION REQUIREMENTS:
@@ -240,8 +157,16 @@ GENERATION REQUIREMENTS:
 2. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
 3. Answers must be accurate, comprehensive, and based on the provided content
 4. Include both correct answers (80%) and strategically incorrect answers (20%)
-5. Vary question complexity and types based on the gap's suggested question types
+5. Vary question complexity and types based on each gap's suggested question types
 6. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
+7. Focus on filling the specific knowledge gaps rather than duplicating existing coverage
+
+QUALITY STANDARDS:
+- Questions should feel natural and user-generated
+- Answers should be informative and well-structured
+- Incorrect answers should be plausible but contain subtle factual errors
+- Each Q&A should clearly address its target knowledge gap
+- Maintain consistency with the fine-tuning goal throughout
 
 For each Q&A pair, provide:
 - Natural user question targeting the specific gap
@@ -249,7 +174,7 @@ For each Q&A pair, provide:
 - Correctness flag (true for correct, false for incorrect)
 - Confidence score (0.8-0.95 for correct, 0.1-0.3 for incorrect)
 - Target gap ID
-- Brief reasoning for why this Q&A addresses the gap
+- Brief reasoning for how this Q&A addresses the gap
 
 Format as JSON array:
 [
@@ -263,7 +188,7 @@ Format as JSON array:
   }
 ]
 
-CONTENT FOR REFERENCE:
+REFERENCE CONTENT:
 ---
 ${combinedContent.substring(0, 10000)}${combinedContent.length > 10000 ? '...' : ''}
 ---

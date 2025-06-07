@@ -103,8 +103,17 @@ const App: React.FC = () => {
           {!isGeminiReady && (
             <Alert
               type="warning"
-              title="API KEY REQUIRED"
+              title="GEMINI API KEY REQUIRED"
               message="Please set your Gemini API key in the .env.local file and restart the development server."
+            />
+          )}
+
+          {/* OpenRouter Warning for Gap Filling */}
+          {enableGapFilling && !isOpenRouterReady && (
+            <Alert
+              type="warning"
+              title="OPENROUTER API KEY REQUIRED FOR GAP FILLING"
+              message="Knowledge gap filling requires OpenRouter API access. Please set your OpenRouter API key in .env.local to enable synthetic Q&A generation."
             />
           )}
 
@@ -271,7 +280,7 @@ const App: React.FC = () => {
                   <label htmlFor="gapFilling" className="text-foreground font-semibold cursor-pointer text-lg">
                     <span className="neon-text-secondary">INTELLIGENT GAP FILLING</span> with Cross-Validated Synthetic Data
                   </label>
-                  <Tooltip content="Advanced AI analysis identifies knowledge gaps in your dataset and generates additional synthetic Q&A pairs. Each synthetic pair is cross-validated by multiple AI models to ensure accuracy and quality before inclusion." />
+                  <Tooltip content="Gemini analyzes the generated Q&A dataset to identify knowledge gaps, then Nvidia Nemotron generates targeted synthetic Q&A pairs. Each synthetic pair is cross-validated by Gemini to ensure accuracy and quality before inclusion." />
                 </div>
                 {enableGapFilling && (
                   <div className="mt-4 space-y-2">
@@ -279,10 +288,13 @@ const App: React.FC = () => {
                       <Brain size={18} className="mr-3 animate-pulse" style={{
                         filter: 'drop-shadow(0 0 3px #dc1aff)'
                       }} />
-                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - identifies missing coverage areas
+                      <span className="neon-text-secondary">KNOWLEDGE GAP ANALYSIS</span> - Gemini identifies missing coverage areas
                     </div>
                     <div className="text-success text-sm font-mono ml-7">
-                      ✅ Using free Llama 3.1 8B model via OpenRouter for gap analysis
+                      ✅ Using Nvidia Llama 3.3 Nemotron (free) via OpenRouter for synthetic generation
+                    </div>
+                    <div className="text-accent text-sm font-mono ml-7">
+                      🔍 Cross-validation by Gemini ensures quality and accuracy
                     </div>
                   </div>
                 )}

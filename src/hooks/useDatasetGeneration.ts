@@ -224,11 +224,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Step 5-7: Knowledge gap filling (if enabled and OpenRouter is available)
       if (enableGapFilling && openRouterService.isReady()) {
         try {
-          // Step 5: Identify knowledge gaps
+          // Step 5: Identify knowledge gaps using Gemini analysis of the generated dataset
           currentStepIndex++;
-          updateProgress(currentStepIndex, totalSteps, 'Analyzing dataset for knowledge gaps...', totalSources, enableWebAugmentation, enableGapFilling);
+          updateProgress(currentStepIndex, totalSteps, 'Analyzing generated dataset for knowledge gaps...', totalSources, enableWebAugmentation, enableGapFilling);
           
-          identifiedGaps = await openRouterService.identifyKnowledgeGaps(
+          identifiedGaps = await geminiService.identifyKnowledgeGaps(
             combinedContent,
             identifiedThemes,
             initialQAPairs,
@@ -236,7 +236,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           );
 
           if (identifiedGaps.length > 0) {
-            // Step 6: Generate synthetic Q&A pairs
+            // Step 6: Generate synthetic Q&A pairs using OpenRouter (Nvidia Nemotron)
             currentStepIndex++;
             updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
             
@@ -249,7 +249,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
             syntheticPairCount = syntheticPairs.length;
 
-            // Step 7: Cross-validate synthetic pairs
+            // Step 7: Cross-validate synthetic pairs using Gemini
             currentStepIndex++;
             updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling);
             

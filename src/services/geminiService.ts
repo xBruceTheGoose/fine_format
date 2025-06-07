@@ -1,5 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
-import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair } from '../types';
+import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair, KnowledgeGap } from '../types';
 import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
 
 class GeminiService {
@@ -499,6 +499,107 @@ JSON Output:
       return shuffledPairs;
     } catch (error: any) {
       throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  // NEW METHOD: Analyze generated Q&A dataset to identify knowledge gaps
+  public async identifyKnowledgeGaps(
+    originalContent: string,
+    identifiedThemes: string[],
+    generatedQAPairs: QAPair[],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<KnowledgeGap[]> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+    const existingQuestions = generatedQAPairs.map(pair => pair.user);
+    const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
+
+    const prompt = `
+You are an expert dataset analyst specializing in identifying knowledge gaps in Q&A datasets for ${goalConfig?.name} fine-tuning.
+
+TASK: Analyze the generated Q&A dataset against the original content to identify significant knowledge gaps that should be filled with additional synthetic Q&A pairs.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+ORIGINAL CONTENT THEMES: ${identifiedThemes.join(', ')}
+
+GENERATED Q&A DATASET ANALYSIS:
+- Total Q&A pairs: ${generatedQAPairs.length}
+- Correct answers: ${generatedQAPairs.filter(p => p.isCorrect).length}
+- Incorrect answers: ${generatedQAPairs.filter(p => !p.isCorrect).length}
+
+EXISTING QUESTION COVERAGE (first 15 examples):
+${existingTopics.slice(0, 15).map((topic, i) => `${i + 1}. ${topic}`).join('\n')}
+${existingTopics.length > 15 ? `... and ${existingTopics.length - 15} more questions` : ''}
+
+ANALYSIS REQUIREMENTS:
+1. Compare the generated Q&A pairs against the original content comprehensiveness
+2. Identify 5-8 significant knowledge areas that are under-represented or missing
+3. Focus on gaps that align with the ${goalConfig?.name} objective and would improve fine-tuning quality
+4. Prioritize gaps based on importance for comprehensive ${goalConfig?.promptFocus}
+5. Consider different question types, complexity levels, and coverage areas
+6. Ensure identified gaps are specific enough to generate targeted synthetic Q&A pairs
+
+For each gap, provide:
+- Unique identifier
+- Clear description of what knowledge area is missing or under-represented
+- Related theme from the original content themes
+- Priority level (high/medium/low) based on importance for ${goalConfig?.name}
+- Suggested question types that would fill this gap
+- Related concepts that should be covered in synthetic pairs
+
+Format as JSON array:
+[
+  {
+    "id": "gap_1",
+    "description": "Detailed description of the missing knowledge area",
+    "theme": "related_theme_from_original_themes",
+    "priority": "high|medium|low",
+    "suggestedQuestionTypes": ["specific_question_type_1", "specific_question_type_2"],
+    "relatedConcepts": ["concept1", "concept2", "concept3"]
+  }
+]
+
+ORIGINAL CONTENT FOR REFERENCE:
+---
+${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '...' : ''}
+---
+
+JSON Output:
+    `.trim();
+
+    try {
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const gaps = this.parseJsonResponse(response.text);
+
+      if (!Array.isArray(gaps)) {
+        throw new Error('Response is not a valid JSON array');
+      }
+
+      return gaps.filter((gap): gap is KnowledgeGap =>
+        gap &&
+        typeof gap.id === 'string' &&
+        typeof gap.description === 'string' &&
+        typeof gap.theme === 'string' &&
+        ['high', 'medium', 'low'].includes(gap.priority) &&
+        Array.isArray(gap.suggestedQuestionTypes) &&
+        Array.isArray(gap.relatedConcepts)
+      ).slice(0, 8); // Limit to 8 gaps max
+
+    } catch (error: any) {
+      console.error('Knowledge gap identification failed:', error);
+      throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
     }
   }
 
