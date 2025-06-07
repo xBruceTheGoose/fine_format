@@ -19,7 +19,7 @@ class GeminiService {
     }
 
     try {
-      this.ai = new GoogleGenAI(apiKey.trim());
+      this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
       this.isInitialized = true;
     } catch (error) {
       console.error('Failed to initialize GoogleGenAI:', error);
