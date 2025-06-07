@@ -420,9 +420,6 @@ STYLE FOCUS - When searching and augmenting:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    const incorrectCount = Math.ceil(QA_PAIR_COUNT_TARGET * INCORRECT_ANSWER_RATIO);
-    const correctCount = QA_PAIR_COUNT_TARGET - incorrectCount;
-
     const prompt = `
 Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs optimized for ${goalConfig?.name} fine-tuning.
 
@@ -432,14 +429,14 @@ FOCUS: ${goalConfig?.promptFocus}
 ${goalSpecificGuidance}
 
 CRITICAL REQUIREMENTS:
-1. Generate ${correctCount} CORRECT question-answer pairs
-2. Generate ${incorrectCount} INCORRECT question-answer pairs (marked as incorrect for training)
+1. Generate ${QA_PAIR_COUNT_TARGET} total Q&A pairs
+2. Include a small portion (approximately 5-10%) of incorrect answers for training discrimination
 3. Questions should be natural user queries relevant to the ${goalConfig?.name} objective${themeGuidance}
 4. Vary question types based on the fine-tuning goal
 5. Avoid self-referential phrases like "according to the text"
 6. Ensure comprehensive coverage aligned with ${goalConfig?.name} objectives
 7. Include both simple and complex questions appropriate for the goal
-8. Incorrect answers should be plausible but factually wrong
+8. Incorrect answers should be plausible but factually wrong to help model learning
 
 For CORRECT answers:
 - Must align with the ${goalConfig?.name} objective
@@ -447,7 +444,7 @@ For CORRECT answers:
 - High confidence in accuracy
 - Demonstrate the desired ${goalConfig?.promptFocus}
 
-For INCORRECT answers:
+For INCORRECT answers (small portion):
 - Should seem plausible but contain factual errors
 - Maintain similar structure to correct answers
 - Clearly mark as incorrect for training purposes

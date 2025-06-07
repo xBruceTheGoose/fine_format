@@ -161,10 +161,6 @@ ${content}
   ): Promise<SyntheticQAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
-    
-    // Calculate correct/incorrect distribution for synthetic pairs
-    const incorrectCount = Math.ceil(targetCount * INCORRECT_ANSWER_RATIO); // 8% incorrect
-    const correctCount = targetCount - incorrectCount;
 
     const prompt = `
 You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality ADDITIONAL training data for ${goalConfig?.name} fine-tuning.
@@ -186,11 +182,11 @@ ${i + 1}. GAP ID: ${gap.id}
 
 GENERATION REQUIREMENTS:
 1. Create approximately ${pairsPerGap} Q&A pairs per knowledge gap (total target: ${targetCount})
-2. Generate EXACTLY ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
+2. Include a small portion (5-10%) of incorrect answers for training discrimination
 3. These are SUPPLEMENTARY pairs - avoid duplicating coverage from the existing 100 pairs
 4. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
 5. Correct answers must be accurate, comprehensive, and based on the provided content
-6. Incorrect answers should be plausible but contain subtle factual errors (only ${Math.round(INCORRECT_ANSWER_RATIO * 100)}% of total)
+6. Incorrect answers should be plausible but contain subtle factual errors (small portion only)
 7. Vary question complexity and types based on each gap's suggested question types
 8. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
 9. Focus specifically on filling the identified knowledge gaps with unique perspectives
@@ -198,12 +194,12 @@ GENERATION REQUIREMENTS:
 QUALITY STANDARDS:
 - Questions should feel natural and user-generated
 - Correct answers should be informative and well-structured
-- Incorrect answers should be plausible but contain subtle factual errors
+- Incorrect answers should be plausible but contain subtle factual errors (small portion)
 - Each Q&A should clearly address its target knowledge gap
 - Maintain consistency with the fine-tuning goal throughout
 - Provide unique value beyond the existing 100 Q&A pairs
 
-INCORRECT ANSWER GUIDELINES:
+INCORRECT ANSWER GUIDELINES (for the small portion):
 - Make incorrect answers believable but factually wrong
 - Include common misconceptions or subtle errors
 - Maintain similar structure and tone to correct answers
@@ -254,7 +250,7 @@ actual line breaks"
 
 CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response. The JSON must be valid and parseable by standard JSON parsers.
 
-Generate exactly ${targetCount} additional synthetic Q&A pairs (${correctCount} correct, ${incorrectCount} incorrect) as a pure, valid JSON array:
+Generate exactly ${targetCount} additional synthetic Q&A pairs (with a small portion being incorrect) as a pure, valid JSON array:
     `.trim();
 
     try {
