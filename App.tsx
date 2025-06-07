@@ -15,11 +15,11 @@ let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
 
 const apiKey = import.meta.env.VITE_API_KEY;
-if (!apiKey) {
-  console.error("API key not found in environment variables");
+if (!apiKey || !apiKey.trim()) {
+  console.error("API key not found or empty in environment variables");
 } else {
   try {
-    ai = new GoogleGenAI(apiKey);
+    ai = new GoogleGenAI(apiKey.trim());
     apiKeyAvailable = true;
   } catch (error) {
     console.error("Failed to initialize GoogleGenAI:", error);
@@ -288,9 +288,9 @@ const App: React.FC = () => {
         <FileUploadArea onChange={handleFileChange} disabled={isLoading} multiple={true} />
         
         {apiKeyMissingWarning && (
-            <AlertMessage type="warning\" message="Warning: VITE_API_KEY is not set. The application will not be able to communicate with the Gemini API." />
+            <AlertMessage type="warning" message="Warning: VITE_API_KEY is not set or is empty. Please set your Gemini API key in the .env.local file and restart the development server." />
         )}
-        {overallError && <AlertMessage type="error\" message={overallError} onClose={() => setOverallError(null)} />}
+        {overallError && <AlertMessage type="error" message={overallError} onClose={() => setOverallError(null)} />}
 
         {filesData.length > 0 && (
           <div className="space-y-3">
