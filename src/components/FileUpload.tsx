@@ -5,7 +5,6 @@ import { FileService } from '../services/fileService';
 import { ACCEPTED_FILE_EXTENSIONS } from '../constants';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
-import { Tooltip } from './ui/Tooltip';
 
 interface FileUploadProps {
   files: FileData[];
@@ -85,15 +84,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-primary font-mono tracking-wide">
-              UPLOAD FILES
-            </h3>
-            <Tooltip 
-              content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." 
-              position="left"
-            />
-          </div>
+          <h3 className="text-xl font-bold text-primary font-mono tracking-wide">
+            UPLOAD FILES
+          </h3>
         </CardHeader>
         <CardContent className="p-0">
           <label
