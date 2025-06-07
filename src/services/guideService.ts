@@ -26,13 +26,13 @@ Key Themes: ${themes.join(', ')}
       case 'pytorch':
         return header + this.generatePyTorchGuide(qaPairs, correctCount, incorrectCount);
       case 'together':
-        return header + this.generateTogetherGuide(qaPairs, correctCount, incorrectCount);
+        return header + this.generateTogetherGuide(qaPairs, correctCount, incorrectCount, timestamp);
       case 'huggingface':
-        return header + this.generateHuggingFaceGuide(qaPairs, correctCount, incorrectCount);
+        return header + this.generateHuggingFaceGuide(qaPairs, correctCount, incorrectCount, timestamp);
       case 'colab':
         return header + this.generateColabGuide(qaPairs, correctCount, incorrectCount);
       case 'openai':
-        return header + this.generateOpenAIGuide(qaPairs, correctCount, incorrectCount);
+        return header + this.generateOpenAIGuide(qaPairs, correctCount, incorrectCount, timestamp);
       case 'anthropic':
         return header + this.generateAnthropicGuide(qaPairs, correctCount, incorrectCount);
       default:
@@ -155,7 +155,7 @@ With ${qaPairs.length} samples, expect:
 `;
   }
 
-  private static generateTogetherGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number): string {
+  private static generateTogetherGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number, timestamp: string): string {
     return `## Together.ai Fine-Tuning Guide
 
 ### Dataset Overview
@@ -245,7 +245,7 @@ response = together.Complete.create(
 `;
   }
 
-  private static generateHuggingFaceGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number): string {
+  private static generateHuggingFaceGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number, timestamp: string): string {
     return `## Hugging Face Fine-Tuning Guide
 
 ### Dataset Overview
@@ -652,7 +652,7 @@ files.download('fine_format_model.zip')
 `;
   }
 
-  private static generateOpenAIGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number): string {
+  private static generateOpenAIGuide(qaPairs: QAPair[], correctCount: number, incorrectCount: number, timestamp: string): string {
     return `## OpenAI Fine-Tuning Guide
 
 ### Dataset Overview
