@@ -86,7 +86,7 @@ const App: React.FC = () => {
               <span className="text-foreground">content from diverse document types, public URLs, and curated relevant web sources into</span>{' '}
               <span className="neon-text-secondary">HIGH-QUALITY</span>,{' '}
               <span className="text-foreground">domain specific</span>{' '}
-              <span className="neon-text">DATASETS</span>{' '}
+              <span className="neon-text-accent">DATASETS</span>{' '}
               <span className="text-foreground">for fine-tuning AI models.</span>
             </p>
             <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
