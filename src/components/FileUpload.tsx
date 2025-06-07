@@ -62,27 +62,27 @@ export const FileUpload: React.FC<FileUploadProps> = ({
 
   const getStatusColor = (status: FileData['status']) => {
     switch (status) {
-      case 'read': return 'text-blue-400';
-      case 'cleaned': return 'text-green-400';
-      case 'failed': return 'text-red-400';
-      case 'cleaning': case 'reading': return 'text-yellow-400';
-      default: return 'text-gray-400';
+      case 'read': return 'status-correct';
+      case 'cleaned': return 'status-correct';
+      case 'failed': return 'status-incorrect';
+      case 'cleaning': case 'reading': return 'status-processing';
+      default: return 'text-muted';
     }
   };
 
   const getStatusText = (status: FileData['status']) => {
     switch (status) {
-      case 'read': return 'Ready';
-      case 'cleaned': return 'Processed';
-      case 'failed': return 'Failed';
-      case 'cleaning': return 'Processing...';
-      case 'reading': return 'Reading...';
-      default: return 'Pending';
+      case 'read': return 'READY';
+      case 'cleaned': return 'PROCESSED';
+      case 'failed': return 'FAILED';
+      case 'cleaning': return 'PROCESSING...';
+      case 'reading': return 'READING...';
+      default: return 'PENDING';
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Card>
         <CardContent className="p-0">
           <label
@@ -91,32 +91,40 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             className={`
-              block w-full p-8 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-200
+              block w-full p-10 border-2 border-dashed rounded-lg cursor-pointer transition-all duration-300 relative overflow-hidden
               ${disabled 
-                ? 'border-gray-600 bg-gray-700/50 cursor-not-allowed' 
+                ? 'border-border bg-surface/30 cursor-not-allowed opacity-50' 
                 : isDragging 
-                  ? 'border-primary bg-primary/10' 
-                  : 'border-gray-600 hover:border-gray-500 bg-gray-700/30 hover:bg-gray-700/50'
+                  ? 'border-primary bg-primary/10 shadow-cyber' 
+                  : 'border-border hover:border-primary/50 bg-surface/20 hover:bg-surface/40'
               }
             `}
+            style={{
+              background: isDragging 
+                ? 'linear-gradient(135deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.05))'
+                : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))'
+            }}
           >
-            <div className="flex flex-col items-center justify-center space-y-3">
+            <div className="flex flex-col items-center justify-center space-y-4">
               <UploadCloud 
-                size={48} 
-                className={isDragging ? 'text-primary' : 'text-gray-400'} 
+                size={64} 
+                className={`${isDragging ? 'text-primary animate-bounce' : 'text-accent'} transition-all duration-300`}
+                style={{
+                  filter: `drop-shadow(0 0 10px ${isDragging ? '#00FF41' : '#00FFFF'})`
+                }}
               />
               <div className="text-center">
-                <div className="flex items-center justify-center space-x-2">
-                  <p className={`text-lg font-medium ${isDragging ? 'text-primary' : 'text-gray-300'}`}>
-                    Drop files here or click to browse
+                <div className="flex items-center justify-center space-x-3">
+                  <p className={`text-xl font-bold font-mono tracking-wide ${isDragging ? 'neon-text' : 'text-foreground'}`}>
+                    {isDragging ? 'DROP FILES HERE' : 'DROP FILES OR CLICK TO BROWSE'}
                   </p>
                   <Tooltip content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." />
                 </div>
-                <p className="text-sm text-gray-400 mt-1">
-                  Supports: .txt, .md, .html, .jsonl, .pdf, .docx
+                <p className="text-accent font-semibold mt-2 font-mono">
+                  SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Maximum file size: 5MB
+                <p className="text-muted text-sm mt-1 font-mono">
+                  MAXIMUM FILE SIZE: 5MB
                 </p>
               </div>
             </div>
@@ -136,38 +144,42 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       {files.length > 0 && (
         <Card>
           <CardContent>
-            <h3 className="text-lg font-semibold text-gray-300 mb-4">
-              Selected Files ({files.length})
+            <h3 className="text-xl font-bold text-primary mb-6 font-mono tracking-wide">
+              SELECTED FILES ({files.length})
             </h3>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {files.map((fileData) => (
                 <div
                   key={fileData.id}
                   className={`
-                    flex items-center justify-between p-3 rounded-lg border
+                    flex items-center justify-between p-4 rounded-lg border transition-all duration-300
                     ${fileData.status === 'failed' 
-                      ? 'bg-red-900/20 border-red-700' 
-                      : fileData.status === 'cleaned'
-                        ? 'bg-green-900/20 border-green-700'
-                        : 'bg-gray-700/50 border-gray-600'
+                      ? 'cyber-alert-error border-error' 
+                      : fileData.status === 'cleaned' || fileData.status === 'read'
+                        ? 'cyber-alert-success border-success'
+                        : 'bg-surface/50 border-border hover:border-primary/50'
                     }
                   `}
                 >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <FileText size={20} className="text-primary flex-shrink-0" />
+                  <div className="flex items-center space-x-4 flex-1 min-w-0">
+                    <FileText 
+                      size={24} 
+                      className="text-accent flex-shrink-0" 
+                      style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                    />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-300 truncate">
+                      <p className="text-foreground font-semibold truncate font-mono">
                         {fileData.file.name}
                       </p>
-                      <div className="flex items-center space-x-2 text-xs text-gray-400">
-                        <span>{fileData.mimeType}</span>
-                        <span>•</span>
-                        <span className={getStatusColor(fileData.status)}>
+                      <div className="flex items-center space-x-3 text-sm mt-1">
+                        <span className="text-muted font-mono">{fileData.mimeType}</span>
+                        <span className="text-border">•</span>
+                        <span className={`${getStatusColor(fileData.status)} font-bold font-mono tracking-wide`}>
                           {getStatusText(fileData.status)}
                         </span>
                       </div>
                       {fileData.error && (
-                        <p className="text-xs text-red-400 mt-1">{fileData.error}</p>
+                        <p className="text-error text-sm mt-1 font-mono">{fileData.error}</p>
                       )}
                     </div>
                   </div>
@@ -175,9 +187,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => removeFile(fileData.id)}
-                    className="ml-2 p-1 border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-400"
+                    className="ml-4 p-2 border-error text-error hover:bg-error hover:text-background"
                   >
-                    <X size={16} />
+                    <X size={18} />
                   </Button>
                 </div>
               ))}

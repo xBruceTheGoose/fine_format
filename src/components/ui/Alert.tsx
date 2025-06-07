@@ -19,38 +19,49 @@ export const Alert: React.FC<AlertProps> = ({
   const config = {
     error: {
       icon: XCircle,
-      classes: 'bg-red-900/30 text-red-300 border-red-700',
+      classes: 'cyber-alert-error text-error',
     },
     warning: {
       icon: AlertTriangle,
-      classes: 'bg-yellow-900/30 text-yellow-300 border-yellow-700',
+      classes: 'cyber-alert-warning text-warning',
     },
     info: {
       icon: Info,
-      classes: 'bg-blue-900/30 text-blue-300 border-blue-700',
+      classes: 'cyber-alert-info text-accent',
     },
     success: {
       icon: CheckCircle,
-      classes: 'bg-green-900/30 text-green-300 border-green-700',
+      classes: 'cyber-alert-success text-success',
     },
   };
 
   const { icon: Icon, classes } = config[type];
 
   return (
-    <div className={`p-4 rounded-lg border flex items-start ${classes} ${className}`} role="alert">
-      <Icon size={20} className="mr-3 flex-shrink-0 mt-0.5" />
+    <div className={`p-6 rounded-lg border flex items-start ${classes} ${className} font-mono`} role="alert">
+      <Icon size={24} className="mr-4 flex-shrink-0 mt-1" style={{
+        filter: 'drop-shadow(0 0 5px currentColor)'
+      }} />
       <div className="flex-grow">
-        {title && <h4 className="font-semibold mb-1">{title}</h4>}
-        <p className="text-sm">{message}</p>
+        {title && (
+          <h4 className="font-bold mb-2 text-lg tracking-wide" style={{
+            textShadow: '0 0 5px currentColor'
+          }}>
+            {title}
+          </h4>
+        )}
+        <p className="text-sm font-medium">{message}</p>
       </div>
       {onClose && (
         <button
           onClick={onClose}
-          className="ml-4 -mr-1 -my-1 p-1 rounded hover:bg-white/10 focus:outline-none"
+          className="ml-4 -mr-1 -my-1 p-2 rounded hover:bg-white/10 focus:outline-none transition-all duration-200"
           aria-label="Close alert"
+          style={{
+            filter: 'drop-shadow(0 0 3px currentColor)'
+          }}
         >
-          <X size={18} />
+          <X size={20} />
         </button>
       )}
     </div>

@@ -40,19 +40,43 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100">
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="min-h-screen bg-background text-foreground relative overflow-x-hidden">
+      {/* Cyberpunk background effects */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-br from-background via-surface to-background opacity-90"></div>
+        <div className="absolute top-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
+        <div className="absolute bottom-0 left-0 w-full h-px bg-gradient-to-r from-transparent via-secondary to-transparent opacity-50"></div>
+      </div>
+
+      <div className="container mx-auto px-4 py-8 max-w-4xl relative z-10">
         {/* Header */}
         <header className="text-center mb-12">
-          <div className="flex items-center justify-center mb-4">
-            <Zap size={48} className="text-primary mr-3" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-primary-light to-primary bg-clip-text text-transparent">
-              Fine Format
+          <div className="flex items-center justify-center mb-6">
+            <Zap size={56} className="text-primary mr-4 animate-pulse" style={{
+              filter: 'drop-shadow(0 0 10px #00FF41)',
+              animation: 'glow-pulse 2s ease-in-out infinite alternate'
+            }} />
+            <h1 
+              className="text-5xl md:text-7xl font-black neon-text glitch font-mono tracking-wider"
+              data-text="FINE FORMAT"
+              style={{
+                textShadow: '0 0 10px #00FF41, 0 0 20px #00FF41, 0 0 30px #00FF41',
+                letterSpacing: '0.1em'
+              }}
+            >
+              FINE FORMAT
             </h1>
           </div>
-          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Transform your documents and web content into high-quality Q&A datasets for AI fine-tuning with 100+ targeted pairs
-          </p>
+          <div className="relative">
+            <p className="text-xl md:text-2xl text-accent max-w-3xl mx-auto font-semibold">
+              <span className="neon-text-accent">TRANSFORM</span>{' '}
+              <span className="text-foreground">your documents and web content into</span>{' '}
+              <span className="neon-text-secondary">HIGH-QUALITY</span>{' '}
+              <span className="text-foreground">Q&A datasets for AI fine-tuning with</span>{' '}
+              <span className="neon-text">100+ TARGETED PAIRS</span>
+            </p>
+            <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+          </div>
         </header>
 
         <div className="space-y-8">
@@ -60,7 +84,7 @@ const App: React.FC = () => {
           {!isGeminiReady && (
             <Alert
               type="warning"
-              title="API Key Required"
+              title="API KEY REQUIRED"
               message="Please set your Gemini API key in the .env.local file and restart the development server."
             />
           )}
@@ -69,7 +93,7 @@ const App: React.FC = () => {
           {error && (
             <Alert
               type="error"
-              title="Processing Error"
+              title="PROCESSING ERROR"
               message={error}
               onClose={clearError}
             />
@@ -90,26 +114,34 @@ const App: React.FC = () => {
           />
 
           {/* Web Augmentation Option */}
-          <Card>
+          <Card className="cyber-card">
             <CardContent>
-              <div className="flex items-center space-x-3">
-                <input
-                  type="checkbox"
-                  id="webAugmentation"
-                  checked={enableWebAugmentation}
-                  onChange={(e) => setEnableWebAugmentation(e.target.checked)}
-                  disabled={isProcessing || !isGeminiReady}
-                  className="h-5 w-5 text-primary rounded border-gray-500 focus:ring-primary bg-gray-600"
-                />
-                <label htmlFor="webAugmentation" className="text-gray-200 font-medium cursor-pointer">
-                  Enhance with Targeted Web Content
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    id="webAugmentation"
+                    checked={enableWebAugmentation}
+                    onChange={(e) => setEnableWebAugmentation(e.target.checked)}
+                    disabled={isProcessing || !isGeminiReady}
+                    className="h-6 w-6 rounded border-2 border-primary bg-surface text-primary focus:ring-primary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
+                    style={{
+                      accentColor: '#00FF41',
+                      filter: 'drop-shadow(0 0 5px #00FF41)'
+                    }}
+                  />
+                </div>
+                <label htmlFor="webAugmentation" className="text-foreground font-semibold cursor-pointer text-lg">
+                  <span className="neon-text">ENHANCE</span> with Targeted Web Content
                 </label>
                 <Tooltip content="AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
               </div>
               {enableWebAugmentation && (
-                <div className="mt-2 flex items-center text-sm text-gray-400">
-                  <Search size={16} className="mr-2" />
-                  Theme-based web search will enhance content quality and coverage
+                <div className="mt-4 flex items-center text-accent font-medium">
+                  <Search size={18} className="mr-3 animate-pulse" style={{
+                    filter: 'drop-shadow(0 0 5px #00FFFF)'
+                  }} />
+                  <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> will enhance content quality and coverage
                 </div>
               )}
             </CardContent>
@@ -122,11 +154,14 @@ const App: React.FC = () => {
               onClick={handleGenerateDataset}
               disabled={!canGenerate}
               loading={isProcessing}
-              className="px-8 py-4"
+              className="px-12 py-6 text-xl font-bold cyber-button"
             >
               {isProcessing 
-                ? 'Generating Dataset...' 
-                : `Generate 100+ Q&A Dataset (${totalReadySources} source${totalReadySources !== 1 ? 's' : ''})`
+                ? <span className="neon-text">GENERATING DATASET...</span>
+                : <span>
+                    <span className="neon-text">GENERATE 100+ Q&A DATASET</span>
+                    <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
+                  </span>
               }
             </Button>
           </div>
@@ -154,12 +189,14 @@ const App: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <footer className="text-center mt-16 pt-8 border-t border-gray-700">
-          <p className="text-gray-500 text-sm">
-            &copy; {new Date().getFullYear()} Fine Format. Powered by Gemini AI.
+        <footer className="text-center mt-20 pt-8 border-t border-border relative">
+          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+          <p className="text-muted text-sm font-mono">
+            &copy; {new Date().getFullYear()} <span className="neon-text">FINE FORMAT</span>. 
+            <span className="text-accent ml-2">POWERED BY GEMINI AI</span>
           </p>
-          <p className="text-gray-600 text-xs mt-1">
-            Supports: .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
+          <p className="text-muted text-xs mt-2 font-mono">
+            <span className="text-primary">SUPPORTS:</span> .txt, .md, .html, .jsonl, .pdf, .docx files and web URLs
           </p>
         </footer>
       </div>

@@ -60,39 +60,43 @@ export const UrlInput: React.FC<UrlInputProps> = ({
 
   const getStatusColor = (status: UrlData['status']) => {
     switch (status) {
-      case 'fetched': return 'text-blue-400';
-      case 'cleaned': return 'text-green-400';
-      case 'failed': return 'text-red-400';
-      case 'fetching': case 'cleaning': return 'text-yellow-400';
-      default: return 'text-gray-400';
+      case 'fetched': return 'status-correct';
+      case 'cleaned': return 'status-correct';
+      case 'failed': return 'status-incorrect';
+      case 'fetching': case 'cleaning': return 'status-processing';
+      default: return 'text-muted';
     }
   };
 
   const getStatusText = (status: UrlData['status']) => {
     switch (status) {
-      case 'fetched': return 'Ready';
-      case 'cleaned': return 'Processed';
-      case 'failed': return 'Failed';
-      case 'fetching': return 'Fetching...';
-      case 'cleaning': return 'Processing...';
-      default: return 'Pending';
+      case 'fetched': return 'READY';
+      case 'cleaned': return 'PROCESSED';
+      case 'failed': return 'FAILED';
+      case 'fetching': return 'FETCHING...';
+      case 'cleaning': return 'PROCESSING...';
+      default: return 'PENDING';
     }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex items-center space-x-2">
-            <h3 className="text-lg font-semibold text-gray-300 flex items-center">
-              <Globe size={20} className="mr-2 text-primary" />
-              Add URLs
+          <div className="flex items-center space-x-3">
+            <h3 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+              <Globe 
+                size={24} 
+                className="mr-3 text-accent" 
+                style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+              />
+              ADD URLs
             </h3>
             <Tooltip content="Add web pages, articles, documentation, or any publicly accessible URL. The system will automatically extract and clean the text content for dataset generation." />
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex space-x-2">
+          <div className="flex space-x-3">
             <div className="flex-1">
               <input
                 type="url"
@@ -101,7 +105,10 @@ export const UrlInput: React.FC<UrlInputProps> = ({
                 onKeyPress={handleKeyPress}
                 placeholder="https://example.com/article"
                 disabled={disabled || isProcessing}
-                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                className="w-full px-4 py-3 cyber-input text-foreground placeholder-muted focus:text-primary font-mono"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.8), rgba(26, 26, 26, 0.6))',
+                }}
               />
             </div>
             <Button
@@ -110,12 +117,13 @@ export const UrlInput: React.FC<UrlInputProps> = ({
               loading={isProcessing}
               icon={Plus}
               variant="primary"
+              className="px-6"
             >
-              Add URL
+              ADD URL
             </Button>
           </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Enter a valid HTTP or HTTPS URL to fetch content from web pages
+          <p className="text-muted text-sm mt-3 font-mono">
+            <span className="text-accent">ENTER</span> a valid HTTP or HTTPS URL to fetch content from web pages
           </p>
         </CardContent>
       </Card>
@@ -123,38 +131,42 @@ export const UrlInput: React.FC<UrlInputProps> = ({
       {urls.length > 0 && (
         <Card>
           <CardContent>
-            <h4 className="text-lg font-semibold text-gray-300 mb-4">
-              Added URLs ({urls.length})
+            <h4 className="text-xl font-bold text-primary mb-6 font-mono tracking-wide">
+              ADDED URLs ({urls.length})
             </h4>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
+            <div className="space-y-3 max-h-80 overflow-y-auto">
               {urls.map((urlData) => (
                 <div
                   key={urlData.id}
                   className={`
-                    flex items-center justify-between p-3 rounded-lg border
+                    flex items-center justify-between p-4 rounded-lg border transition-all duration-300
                     ${urlData.status === 'failed' 
-                      ? 'bg-red-900/20 border-red-700' 
-                      : urlData.status === 'cleaned'
-                        ? 'bg-green-900/20 border-green-700'
-                        : 'bg-gray-700/50 border-gray-600'
+                      ? 'cyber-alert-error border-error' 
+                      : urlData.status === 'cleaned' || urlData.status === 'fetched'
+                        ? 'cyber-alert-success border-success'
+                        : 'bg-surface/50 border-border hover:border-primary/50'
                     }
                   `}
                 >
-                  <div className="flex items-center space-x-3 flex-1 min-w-0">
-                    <Link size={20} className="text-primary flex-shrink-0" />
+                  <div className="flex items-center space-x-4 flex-1 min-w-0">
+                    <Link 
+                      size={24} 
+                      className="text-accent flex-shrink-0" 
+                      style={{ filter: 'drop-shadow(0 0 5px #00FFFF)' }}
+                    />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-300 truncate">
+                      <p className="text-foreground font-semibold truncate font-mono">
                         {urlData.title || urlData.url}
                       </p>
-                      <div className="flex items-center space-x-2 text-xs text-gray-400">
-                        <span className="truncate">{urlData.url}</span>
-                        <span>•</span>
-                        <span className={getStatusColor(urlData.status)}>
+                      <div className="flex items-center space-x-3 text-sm mt-1">
+                        <span className="text-muted truncate font-mono">{urlData.url}</span>
+                        <span className="text-border">•</span>
+                        <span className={`${getStatusColor(urlData.status)} font-bold font-mono tracking-wide`}>
                           {getStatusText(urlData.status)}
                         </span>
                       </div>
                       {urlData.error && (
-                        <p className="text-xs text-red-400 mt-1">{urlData.error}</p>
+                        <p className="text-error text-sm mt-1 font-mono">{urlData.error}</p>
                       )}
                     </div>
                   </div>
@@ -162,9 +174,9 @@ export const UrlInput: React.FC<UrlInputProps> = ({
                     variant="outline"
                     size="sm"
                     onClick={() => removeUrl(urlData.id)}
-                    className="ml-2 p-1 border-gray-600 text-gray-400 hover:text-red-400 hover:border-red-400"
+                    className="ml-4 p-2 border-error text-error hover:bg-error hover:text-background"
                   >
-                    <X size={16} />
+                    <X size={18} />
                   </Button>
                 </div>
               ))}
