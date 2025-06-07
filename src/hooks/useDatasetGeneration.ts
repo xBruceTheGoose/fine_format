@@ -112,9 +112,18 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
       // Step 3: Web augmentation (if enabled)
       if (enableWebAugmentation) {
-        setCurrentStep('Augmenting content with web search...');
+        setCurrentStep('Identifying themes for targeted web search...');
+        
         try {
-          const result = await geminiService.augmentWithWebSearch(combinedContent);
+          // Identify themes from the combined content
+          const identifiedThemes = await geminiService.identifyThemes(combinedContent);
+          
+          if (identifiedThemes.length > 0) {
+            setCurrentStep(`Found ${identifiedThemes.length} themes: ${identifiedThemes.join(', ')}`);
+          }
+
+          setCurrentStep('Augmenting content with targeted web search...');
+          const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes);
           combinedContent = result.augmentedText;
           groundingMetadata = result.groundingMetadata;
           isAugmented = true;

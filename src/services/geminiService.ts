@@ -49,6 +49,63 @@ class GeminiService {
     }
   }
 
+  public async identifyThemes(
+    combinedContent: string
+  ): Promise<string[]> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
+    const prompt = `
+Analyze the following content and identify 3-5 key themes, topics, or subject areas that would be valuable for web search augmentation.
+
+Requirements:
+- Focus on specific, searchable topics rather than generic themes
+- Prioritize themes that would benefit from current, factual information
+- Consider what additional context would enhance understanding
+- Return themes as search-friendly phrases
+- Avoid overly broad or vague topics
+
+Format as a JSON array of strings, each representing a specific theme or topic.
+
+Example: ["artificial intelligence ethics", "renewable energy storage", "quantum computing applications"]
+
+Content to analyze:
+---
+${combinedContent.substring(0, 8000)} ${combinedContent.length > 8000 ? '...' : ''}
+---
+
+JSON Output:
+    `.trim();
+
+    try {
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: 'application/json',
+        },
+      });
+
+      const themes = this.parseJsonResponse(response.text);
+
+      if (!Array.isArray(themes)) {
+        throw new Error('Response is not a valid JSON array');
+      }
+
+      const validThemes = themes.filter(
+        (theme): theme is string =>
+          typeof theme === 'string' && theme.trim().length > 0
+      );
+
+      return validThemes.slice(0, 5); // Limit to 5 themes max
+    } catch (error: any) {
+      console.error('Theme identification failed:', error);
+      // Return empty array if theme identification fails - web search will still work
+      return [];
+    }
+  }
+
   public async cleanTextContent(
     textContent: string,
     fileName: string
@@ -127,20 +184,26 @@ Do not add commentary or explanations.
   }
 
   public async augmentWithWebSearch(
-    originalContent: string
+    originalContent: string,
+    identifiedThemes: string[] = []
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
     if (!this.ai) {
       throw new Error('Gemini service not initialized');
     }
 
+    const themeGuidance = identifiedThemes.length > 0 
+      ? `\n\nFocus your web search on these identified themes: ${identifiedThemes.join(', ')}`
+      : '';
+
     const prompt = `
 You are a content augmentation expert. Your task:
 
 1. Analyze the core themes and topics in the provided text
-2. Use Google Search to find relevant, factual, up-to-date information
+2. Use Google Search to find relevant, factual, up-to-date information${themeGuidance}
 3. Integrate web-sourced information with the original text
 4. Create a comprehensive, coherent narrative
 5. Focus on enhancing value while maintaining original themes
+6. Prioritize current facts, statistics, and developments
 
 Return ONLY the augmented text without commentary.
 

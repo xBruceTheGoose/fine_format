@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Bot, Download } from 'lucide-react';
+import { MessageSquare, Bot, Download, Search, Lightbulb } from 'lucide-react';
 import { QAPair, GroundingMetadata } from '../types';
 import { Card, CardHeader, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
@@ -63,14 +63,20 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <h3 className="text-xl font-semibold text-primary-light">
+          <h3 className="text-xl font-semibold text-primary-light flex items-center">
+            <Lightbulb size={24} className="mr-2" />
             Generated Dataset Preview
           </h3>
           <p className="text-gray-400">
             {qaPairs.length} Q&A pairs from {totalSources} source{totalSources !== 1 ? 's' : ''}
             {sourceFileCount > 0 && ` (${sourceFileCount} file${sourceFileCount !== 1 ? 's' : ''})`}
             {sourceUrlCount > 0 && ` (${sourceUrlCount} URL${sourceUrlCount !== 1 ? 's' : ''})`}
-            {isAugmented && ' (augmented with web content)'}
+            {isAugmented && (
+              <span className="inline-flex items-center ml-2 px-2 py-1 bg-primary/20 text-primary-light rounded-full text-xs">
+                <Search size={12} className="mr-1" />
+                Web Enhanced
+              </span>
+            )}
           </p>
         </CardHeader>
         <CardContent>
@@ -105,7 +111,13 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {webSources.length > 0 && (
         <Card>
           <CardHeader>
-            <h4 className="text-lg font-semibold text-gray-300">Web Sources Used</h4>
+            <h4 className="text-lg font-semibold text-gray-300 flex items-center">
+              <Search size={20} className="mr-2 text-primary" />
+              Web Sources Used ({webSources.length})
+            </h4>
+            <p className="text-sm text-gray-400">
+              Content was enhanced with information from these web sources
+            </p>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
@@ -116,9 +128,10 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     href={chunk.web.uri}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block p-2 bg-gray-700/50 rounded text-sm text-primary-light hover:text-primary hover:bg-gray-700 transition-colors"
+                    className="block p-3 bg-gray-700/50 rounded-lg text-sm text-primary-light hover:text-primary hover:bg-gray-700 transition-colors border border-gray-600 hover:border-primary/50"
                   >
-                    {chunk.web.title || chunk.web.uri}
+                    <div className="font-medium">{chunk.web.title || 'Web Source'}</div>
+                    <div className="text-xs text-gray-400 mt-1 truncate">{chunk.web.uri}</div>
                   </a>
                 )
               ))}
@@ -129,7 +142,13 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
 
       <Card>
         <CardHeader>
-          <h4 className="text-lg font-semibold text-gray-300">Download Dataset</h4>
+          <h4 className="text-lg font-semibold text-gray-300 flex items-center">
+            <Download size={20} className="mr-2" />
+            Download Dataset
+          </h4>
+          <p className="text-sm text-gray-400">
+            Export your generated dataset in multiple formats
+          </p>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3">
