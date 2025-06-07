@@ -3,7 +3,7 @@ import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp';
 export const QA_PAIR_COUNT_TARGET = 100; // Target 100 Q&A pairs from original content
 export const SYNTHETIC_QA_TARGET = 75; // Target 50-100 additional synthetic pairs
-export const INCORRECT_ANSWER_RATIO = 0.15; // 15% incorrect answers
+export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
 
 export const SUPPORTED_TEXT_MIME_TYPES: TextMimeType[] = [
   'text/plain',

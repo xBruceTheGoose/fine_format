@@ -1,5 +1,5 @@
 import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal } from '../types';
-import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET } from '../constants';
+import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class OpenRouterService {
   private apiKey: string | null = null;
@@ -161,6 +161,10 @@ ${content}
   ): Promise<SyntheticQAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
+    
+    // Calculate correct/incorrect distribution for synthetic pairs
+    const incorrectCount = Math.ceil(targetCount * INCORRECT_ANSWER_RATIO); // 8% incorrect
+    const correctCount = targetCount - incorrectCount;
 
     const prompt = `
 You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality ADDITIONAL training data for ${goalConfig?.name} fine-tuning.
@@ -182,25 +186,32 @@ ${i + 1}. GAP ID: ${gap.id}
 
 GENERATION REQUIREMENTS:
 1. Create approximately ${pairsPerGap} Q&A pairs per knowledge gap (total target: ${targetCount})
-2. These are SUPPLEMENTARY pairs - avoid duplicating coverage from the existing 100 pairs
-3. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
-4. Answers must be accurate, comprehensive, and based on the provided content
-5. Include both correct answers (80%) and strategically incorrect answers (20%)
-6. Vary question complexity and types based on each gap's suggested question types
-7. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
-8. Focus specifically on filling the identified knowledge gaps with unique perspectives
+2. Generate EXACTLY ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
+3. These are SUPPLEMENTARY pairs - avoid duplicating coverage from the existing 100 pairs
+4. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
+5. Correct answers must be accurate, comprehensive, and based on the provided content
+6. Incorrect answers should be plausible but contain subtle factual errors (only ${Math.round(INCORRECT_ANSWER_RATIO * 100)}% of total)
+7. Vary question complexity and types based on each gap's suggested question types
+8. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
+9. Focus specifically on filling the identified knowledge gaps with unique perspectives
 
 QUALITY STANDARDS:
 - Questions should feel natural and user-generated
-- Answers should be informative and well-structured
+- Correct answers should be informative and well-structured
 - Incorrect answers should be plausible but contain subtle factual errors
 - Each Q&A should clearly address its target knowledge gap
 - Maintain consistency with the fine-tuning goal throughout
 - Provide unique value beyond the existing 100 Q&A pairs
 
+INCORRECT ANSWER GUIDELINES:
+- Make incorrect answers believable but factually wrong
+- Include common misconceptions or subtle errors
+- Maintain similar structure and tone to correct answers
+- Ensure they're useful for training the model to distinguish quality
+
 For each Q&A pair, provide:
 - Natural user question targeting the specific gap
-- Comprehensive answer based on content
+- Comprehensive answer based on content (correct or strategically incorrect)
 - Correctness flag (true for correct, false for incorrect)
 - Confidence score (0.8-0.95 for correct, 0.1-0.3 for incorrect)
 - Target gap ID
@@ -243,7 +254,7 @@ actual line breaks"
 
 CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response. The JSON must be valid and parseable by standard JSON parsers.
 
-Generate exactly ${targetCount} additional synthetic Q&A pairs as a pure, valid JSON array:
+Generate exactly ${targetCount} additional synthetic Q&A pairs (${correctCount} correct, ${incorrectCount} incorrect) as a pure, valid JSON array:
     `.trim();
 
     try {
