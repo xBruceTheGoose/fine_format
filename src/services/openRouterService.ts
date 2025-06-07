@@ -72,6 +72,15 @@ class OpenRouterService {
       jsonStr = match[1].trim();
     }
 
+    // Try to extract JSON from response that might contain conversational text
+    // Look for the first occurrence of '[' and the last occurrence of ']'
+    const firstBracket = jsonStr.indexOf('[');
+    const lastBracket = jsonStr.lastIndexOf(']');
+    
+    if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
+      jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+    }
+
     try {
       return JSON.parse(jsonStr);
     } catch (error) {
@@ -195,9 +204,9 @@ REFERENCE CONTENT:
 ${combinedContent.substring(0, 10000)}${combinedContent.length > 10000 ? '...' : ''}
 ---
 
-Generate exactly ${targetCount} additional synthetic Q&A pairs:
+CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response.
 
-JSON Output:
+Generate exactly ${targetCount} additional synthetic Q&A pairs as a pure JSON array:
     `.trim();
 
     try {
