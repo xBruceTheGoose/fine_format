@@ -3,7 +3,7 @@ import { UploadCloud, FileText, X } from 'lucide-react';
 import { FileData } from '../types';
 import { FileService } from '../services/fileService';
 import { ACCEPTED_FILE_EXTENSIONS } from '../constants';
-import { Card, CardContent } from './ui/Card';
+import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
 import { Tooltip } from './ui/Tooltip';
 
@@ -84,6 +84,17 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   return (
     <div className="space-y-6">
       <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-primary font-mono tracking-wide">
+              UPLOAD FILES
+            </h3>
+            <Tooltip 
+              content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." 
+              position="left"
+            />
+          </div>
+        </CardHeader>
         <CardContent className="p-0">
           <label
             htmlFor="file-upload"
@@ -114,16 +125,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 }}
               />
               <div className="text-center">
-                <div className="flex items-center justify-center space-x-3">
-                  <p className={`text-xl font-bold font-mono tracking-wide ${isDragging ? 'neon-text' : 'text-foreground'}`}>
-                    {isDragging ? 'DROP FILES HERE' : 'DROP FILES OR CLICK TO BROWSE'}
-                  </p>
-                  <Tooltip 
-                    content="Upload documents, PDFs, text files, or web pages. Supported formats: .txt, .md, .html, .jsonl, .pdf, .docx. Maximum file size: 5MB per file." 
-                    position="top"
-                    className="z-50"
-                  />
-                </div>
+                <p className={`text-xl font-bold font-mono tracking-wide ${isDragging ? 'neon-text' : 'text-foreground'}`}>
+                  {isDragging ? 'DROP FILES HERE' : 'DROP FILES OR CLICK TO BROWSE'}
+                </p>
                 <p className="text-accent font-semibold mt-2 font-mono">
                   SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>
