@@ -81,7 +81,7 @@ const App: React.FC = () => {
           </div>
           <div className="relative">
             <p className="text-xl md:text-2xl text-accent max-w-3xl mx-auto font-semibold">
-              <span className="text-foreground">Efficiently</span>{' '}
+              <span className="neon-text-accent">Efficiently</span>{' '}
               <span className="neon-text-accent">TRANSFORM</span>{' '}
               <span className="text-foreground">content from diverse document types, public URLs, and curated relevant web sources into</span>{' '}
               <span className="neon-text-secondary">HIGH-QUALITY</span>,{' '}
@@ -142,27 +142,30 @@ const App: React.FC = () => {
                       className={`
                         p-4 rounded-lg border-2 transition-all duration-300 text-left relative overflow-hidden
                         ${isSelected 
-                          ? 'border-primary bg-primary/10 shadow-cyber' 
-                          : 'border-border bg-surface/30 hover:border-primary/50 hover:bg-surface/50'
+                          ? 'border-accent bg-accent/10 shadow-neon' 
+                          : 'border-border bg-surface/30 hover:border-accent/50 hover:bg-surface/50'
                         }
                         ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                       `}
                       style={{
                         background: isSelected 
-                          ? 'linear-gradient(135deg, rgba(0, 255, 65, 0.08), rgba(0, 255, 65, 0.04))'
-                          : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))'
+                          ? 'linear-gradient(135deg, rgba(0, 255, 255, 0.08), rgba(0, 255, 255, 0.04))'
+                          : 'linear-gradient(135deg, rgba(26, 26, 26, 0.3), rgba(26, 26, 26, 0.1))',
+                        boxShadow: isSelected 
+                          ? '0 0 20px rgba(0, 255, 255, 0.3), inset 0 0 20px rgba(0, 255, 255, 0.05)'
+                          : undefined
                       }}
                     >
                       <div className="flex items-start space-x-3">
                         <div className="text-2xl">{goal.icon}</div>
                         <IconComponent 
                           size={24} 
-                          className={`${isSelected ? 'text-primary' : 'text-accent'} flex-shrink-0`}
-                          style={{ filter: `drop-shadow(0 0 3px ${isSelected ? '#00FF41' : '#00FFFF'})` }}
+                          className={`${isSelected ? 'text-accent' : 'text-accent'} flex-shrink-0`}
+                          style={{ filter: `drop-shadow(0 0 3px ${isSelected ? '#00FFFF' : '#00FFFF'})` }}
                         />
                       </div>
                       <h4 className={`font-bold text-lg mt-3 font-mono tracking-wide ${
-                        isSelected ? 'neon-text' : 'text-foreground'
+                        isSelected ? 'neon-text-accent' : 'text-foreground'
                       }`}>
                         {goal.name}
                       </h4>
@@ -171,8 +174,8 @@ const App: React.FC = () => {
                       </p>
                       {isSelected && (
                         <div className="absolute top-2 right-2">
-                          <div className="w-3 h-3 bg-primary rounded-full animate-pulse"
-                               style={{ boxShadow: '0 0 5px #00FF41' }} />
+                          <div className="w-3 h-3 bg-accent rounded-full animate-pulse"
+                               style={{ boxShadow: '0 0 5px #00FFFF' }} />
                         </div>
                       )}
                     </button>
