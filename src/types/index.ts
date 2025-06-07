@@ -1,6 +1,8 @@
 export interface QAPair {
   user: string;
   model: string;
+  isCorrect: boolean; // true for correct answers, false for incorrect
+  confidence?: number; // confidence score for the answer quality
 }
 
 export interface FileData {
@@ -42,8 +44,11 @@ export interface ProcessedData {
   qaPairs: QAPair[];
   sourceFileCount: number;
   sourceUrlCount: number;
+  identifiedThemes: string[];
   isAugmented?: boolean;
   groundingMetadata?: GroundingMetadata;
+  correctAnswerCount: number;
+  incorrectAnswerCount: number;
 }
 
 export interface StandardFormatMessage {
@@ -57,6 +62,11 @@ export interface StandardFormatQAPair {
   };
   preferred_output: StandardFormatMessage[];
   non_preferred_output: StandardFormatMessage[];
+  metadata: {
+    is_correct: boolean;
+    confidence?: number;
+    theme?: string;
+  };
 }
 
 export type TextMimeType = 

@@ -54,7 +54,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
     try {
       const totalSources = readyFiles.length + readyUrls.length;
-      const totalSteps = totalSources + (enableWebAugmentation ? 3 : 1); // +1 for Q&A generation, +2 for theme identification and web search
+      const totalSteps = totalSources + (enableWebAugmentation ? 4 : 2); // +1 for theme identification, +1 for Q&A generation, +2 for web search
       let currentStepIndex = 0;
 
       // Step 1: Clean content from files and URLs
@@ -119,27 +119,26 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         throw new Error('No content could be extracted from any sources.');
       }
 
-      // Step 2: Combine content
+      // Step 2: Combine content and identify themes
       let combinedContent = cleanedTexts.join('\n\n---\n\n');
+      currentStepIndex++;
+      updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...');
+      
+      const identifiedThemes = await geminiService.identifyThemes(combinedContent);
+      
       let groundingMetadata;
       let isAugmented = false;
 
       // Step 3: Web augmentation (if enabled)
       if (enableWebAugmentation) {
-        currentStepIndex++;
-        updateProgress(currentStepIndex, totalSteps, 'Identifying key themes for targeted web search...');
-        
-        try {
-          // Identify themes from the combined content
-          const identifiedThemes = await geminiService.identifyThemes(combinedContent);
-          
-          if (identifiedThemes.length > 0) {
-            currentStepIndex++;
-            updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`);
-          }
-
+        if (identifiedThemes.length > 0) {
           currentStepIndex++;
-          updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...');
+          updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`);
+        }
+
+        currentStepIndex++;
+        updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...');
+        try {
           const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes);
           combinedContent = result.augmentedText;
           groundingMetadata = result.groundingMetadata;
@@ -150,22 +149,28 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         }
       }
 
-      // Final step: Generate Q&A pairs
+      // Final step: Generate comprehensive Q&A pairs
       currentStepIndex++;
-      updateProgress(currentStepIndex, totalSteps, 'Generating intelligent Q&A pairs...');
-      const qaPairs = await geminiService.generateQAPairs(combinedContent);
+      updateProgress(currentStepIndex, totalSteps, 'Generating 100+ intelligent Q&A pairs with correct and incorrect answers...');
+      const qaPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes);
+
+      const correctAnswers = qaPairs.filter(pair => pair.isCorrect);
+      const incorrectAnswers = qaPairs.filter(pair => !pair.isCorrect);
 
       setProcessedData({
         combinedCleanedText: combinedContent,
         qaPairs,
         sourceFileCount: readyFiles.length,
         sourceUrlCount: readyUrls.length,
+        identifiedThemes,
         isAugmented,
         groundingMetadata,
+        correctAnswerCount: correctAnswers.length,
+        incorrectAnswerCount: incorrectAnswers.length,
       });
 
       setProgress(100);
-      setCurrentStep(`Successfully generated ${qaPairs.length} Q&A pairs from ${successfulSources.length} sources!`);
+      setCurrentStep(`Successfully generated ${qaPairs.length} Q&A pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);

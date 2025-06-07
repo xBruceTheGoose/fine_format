@@ -4,9 +4,9 @@ export class DownloadService {
   public static downloadAsCSV(data: QAPair[], filename: string): void {
     if (data.length === 0) return;
 
-    const csvHeader = 'user_question,model_answer\n';
+    const csvHeader = 'user_question,model_answer,is_correct,confidence\n';
     const csvRows = data
-      .map(pair => `${this.escapeCSVField(pair.user)},${this.escapeCSVField(pair.model)}`)
+      .map(pair => `${this.escapeCSVField(pair.user)},${this.escapeCSVField(pair.model)},${pair.isCorrect},${pair.confidence || 0.9}`)
       .join('\n');
     
     const csvContent = csvHeader + csvRows;
@@ -45,7 +45,7 @@ export class DownloadService {
         messages: [
           {
             role: 'assistant',
-            content: 'This Q&A pair is part of a generated dataset.',
+            content: 'This Q&A pair is part of a fine-tuning dataset with correct and incorrect examples.',
           },
           {
             role: 'user',
@@ -53,13 +53,22 @@ export class DownloadService {
           },
         ],
       },
-      preferred_output: [
+      preferred_output: pair.isCorrect ? [
         {
           role: 'assistant',
           content: pair.model,
         },
-      ],
-      non_preferred_output: [],
+      ] : [],
+      non_preferred_output: !pair.isCorrect ? [
+        {
+          role: 'assistant',
+          content: pair.model,
+        },
+      ] : [],
+      metadata: {
+        is_correct: pair.isCorrect,
+        confidence: pair.confidence,
+      },
     };
   }
 

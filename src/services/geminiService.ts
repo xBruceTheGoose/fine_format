@@ -1,6 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
 import { QAPair, GroundingMetadata } from '../types';
-import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET } from '../constants';
+import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class GeminiService {
   private ai: GoogleGenAI | null = null;
@@ -57,22 +57,23 @@ class GeminiService {
     }
 
     const prompt = `
-Analyze the following content and identify 3-5 key themes, topics, or subject areas that would be valuable for web search augmentation.
+Analyze the following content and identify 5-8 key themes, topics, or subject areas that would be valuable for comprehensive Q&A generation and web search augmentation.
 
 Requirements:
 - Focus on specific, searchable topics rather than generic themes
 - Prioritize themes that would benefit from current, factual information
 - Consider what additional context would enhance understanding
 - Return themes as search-friendly phrases
-- Avoid overly broad or vague topics
+- Include both broad and specific themes for comprehensive coverage
+- Ensure themes are relevant for generating 100+ diverse Q&A pairs
 
 Format as a JSON array of strings, each representing a specific theme or topic.
 
-Example: ["artificial intelligence ethics", "renewable energy storage", "quantum computing applications"]
+Example: ["artificial intelligence ethics", "machine learning algorithms", "neural network architectures", "AI safety protocols", "deep learning applications"]
 
 Content to analyze:
 ---
-${combinedContent.substring(0, 8000)} ${combinedContent.length > 8000 ? '...' : ''}
+${combinedContent.substring(0, 12000)} ${combinedContent.length > 12000 ? '...' : ''}
 ---
 
 JSON Output:
@@ -98,7 +99,7 @@ JSON Output:
           typeof theme === 'string' && theme.trim().length > 0
       );
 
-      return validThemes.slice(0, 5); // Limit to 5 themes max
+      return validThemes.slice(0, 8); // Limit to 8 themes max
     } catch (error: any) {
       console.error('Theme identification failed:', error);
       // Return empty array if theme identification fails - web search will still work
@@ -204,6 +205,7 @@ You are a content augmentation expert. Your task:
 4. Create a comprehensive, coherent narrative
 5. Focus on enhancing value while maintaining original themes
 6. Prioritize current facts, statistics, and developments
+7. Ensure the augmented content supports generation of 100+ diverse Q&A pairs
 
 Return ONLY the augmented text without commentary.
 
@@ -231,28 +233,55 @@ ${originalContent}
     }
   }
 
-  public async generateQAPairs(content: string): Promise<QAPair[]> {
+  public async generateQAPairs(content: string, themes: string[] = []): Promise<QAPair[]> {
     if (!this.ai) {
       throw new Error('Gemini service not initialized');
     }
 
-    if (content.length < 100) {
-      throw new Error('Content too short for Q&A generation (minimum 100 characters)');
+    if (content.length < 200) {
+      throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
     }
 
+    const themeGuidance = themes.length > 0 
+      ? `\n\nEnsure questions cover these key themes: ${themes.join(', ')}`
+      : '';
+
+    const incorrectCount = Math.ceil(QA_PAIR_COUNT_TARGET * INCORRECT_ANSWER_RATIO);
+    const correctCount = QA_PAIR_COUNT_TARGET - incorrectCount;
+
     const prompt = `
-Generate ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs from the provided text.
+Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs from the provided text for AI fine-tuning.
 
-Requirements:
-- Questions should be natural user queries answerable from the text
-- Answers must be factual and directly derived from the content
-- Avoid self-referential phrases like "according to the text" or "based on the document"
-- Vary question types (factual, conceptual, analytical)
-- Ensure answers are complete and informative
+CRITICAL REQUIREMENTS:
+1. Generate ${correctCount} CORRECT question-answer pairs
+2. Generate ${incorrectCount} INCORRECT question-answer pairs (marked as incorrect for training)
+3. Questions should be natural user queries answerable from the text${themeGuidance}
+4. Vary question types: factual, conceptual, analytical, comparative, procedural
+5. Avoid self-referential phrases like "according to the text"
+6. Ensure comprehensive coverage of all major topics
+7. Include both simple and complex questions
+8. Incorrect answers should be plausible but factually wrong
 
-Format as valid JSON array with objects containing "user" and "model" keys.
+For CORRECT answers:
+- Must be factual and directly derived from the content
+- Complete and informative responses
+- High confidence in accuracy
 
-Example: [{"user": "What is the main topic?", "model": "The main topic is..."}]
+For INCORRECT answers:
+- Should seem plausible but contain factual errors
+- Maintain similar structure to correct answers
+- Clearly mark as incorrect for training purposes
+
+Format as valid JSON array with objects containing:
+- "user": the question
+- "model": the answer
+- "isCorrect": true for correct answers, false for incorrect
+- "confidence": 0.9-1.0 for correct, 0.1-0.4 for incorrect
+
+Example: [
+  {"user": "What is the main topic?", "model": "The main topic is...", "isCorrect": true, "confidence": 0.95},
+  {"user": "When was this invented?", "model": "This was invented in 1850", "isCorrect": false, "confidence": 0.2}
+]
 
 Text:
 ---
@@ -282,14 +311,30 @@ JSON Output:
           item &&
           typeof item.user === 'string' &&
           typeof item.model === 'string' &&
+          typeof item.isCorrect === 'boolean' &&
           item.user.trim().length > 0 &&
           item.model.trim().length > 0
-      );
+      ).map(pair => ({
+        ...pair,
+        confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2)
+      }));
 
-      return validPairs;
+      // Shuffle the array to randomize correct/incorrect order
+      const shuffledPairs = this.shuffleArray(validPairs);
+
+      return shuffledPairs;
     } catch (error: any) {
       throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
     }
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   }
 }
 

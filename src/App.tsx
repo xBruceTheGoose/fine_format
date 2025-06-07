@@ -50,7 +50,7 @@ const App: React.FC = () => {
             </h1>
           </div>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Transform your documents and web content into high-quality Q&A datasets for AI fine-tuning
+            Transform your documents and web content into high-quality Q&A datasets for AI fine-tuning with 100+ targeted pairs
           </p>
         </header>
 
@@ -101,19 +101,19 @@ const App: React.FC = () => {
                   className="h-5 w-5 text-primary rounded border-gray-500 focus:ring-primary bg-gray-600"
                 />
                 <label htmlFor="webAugmentation" className="text-gray-200 font-medium cursor-pointer">
-                  Enhance with Web Content
+                  Enhance with Targeted Web Content
                 </label>
                 <div className="group relative">
                   <HelpCircle size={18} className="text-gray-400 cursor-help" />
                   <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-700 text-white text-sm rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-64 z-10">
-                    When enabled, the AI will search for relevant information online to enrich your dataset with additional context and facts.
+                    AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning.
                   </div>
                 </div>
               </div>
               {enableWebAugmentation && (
                 <div className="mt-2 flex items-center text-sm text-gray-400">
                   <Search size={16} className="mr-2" />
-                  Web search will be used to enhance content quality
+                  Theme-based web search will enhance content quality and coverage
                 </div>
               )}
             </CardContent>
@@ -130,7 +130,7 @@ const App: React.FC = () => {
             >
               {isProcessing 
                 ? 'Generating Dataset...' 
-                : `Generate Dataset (${totalReadySources} source${totalReadySources !== 1 ? 's' : ''})`
+                : `Generate 100+ Q&A Dataset (${totalReadySources} source${totalReadySources !== 1 ? 's' : ''})`
               }
             </Button>
           </div>
@@ -148,6 +148,9 @@ const App: React.FC = () => {
               qaPairs={processedData.qaPairs}
               sourceFileCount={processedData.sourceFileCount}
               sourceUrlCount={processedData.sourceUrlCount}
+              identifiedThemes={processedData.identifiedThemes}
+              correctAnswerCount={processedData.correctAnswerCount}
+              incorrectAnswerCount={processedData.incorrectAnswerCount}
               isAugmented={processedData.isAugmented}
               groundingMetadata={processedData.groundingMetadata}
             />
