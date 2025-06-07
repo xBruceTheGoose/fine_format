@@ -118,7 +118,7 @@ const App: React.FC = () => {
             <CardHeader>
               <div className="flex items-center space-x-3">
                 <h3 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
-                  <FlagOff 
+                  <flag-triangle-right 
                     size={24} 
                     className="mr-3 text-accent" 
                     style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }}
