@@ -14,7 +14,7 @@ import { FileText, UploadCloud, Zap, CheckCircle, XCircle, Info, Search, HelpCir
 let ai: GoogleGenAI | null = null;
 let apiKeyAvailable = false;
 
-const apiKey = import.meta.env.VITE_API_KEY || process.env.API_KEY;
+const apiKey = import.meta.env.VITE_API_KEY;
 if (!apiKey) {
   console.error("API key not found in environment variables");
 } else {
@@ -288,7 +288,7 @@ const App: React.FC = () => {
         <FileUploadArea onChange={handleFileChange} disabled={isLoading} multiple={true} />
         
         {apiKeyMissingWarning && (
-            <AlertMessage type="warning\" message="Warning: API_KEY is not set. The application will not be able to communicate with the Gemini API." />
+            <AlertMessage type="warning\" message="Warning: VITE_API_KEY is not set. The application will not be able to communicate with the Gemini API." />
         )}
         {overallError && <AlertMessage type="error\" message={overallError} onClose={() => setOverallError(null)} />}
 
