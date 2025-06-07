@@ -26,6 +26,8 @@ const App: React.FC = () => {
     isProcessing,
     currentStep,
     progress,
+    estimatedTimeRemaining,
+    totalEstimatedTime,
     error,
     generateDataset,
     clearError,
@@ -323,6 +325,8 @@ const App: React.FC = () => {
             isProcessing={isProcessing}
             currentStep={currentStep}
             progress={progress}
+            estimatedTimeRemaining={estimatedTimeRemaining}
+            totalEstimatedTime={totalEstimatedTime}
           />
 
           {/* Dataset Preview */}

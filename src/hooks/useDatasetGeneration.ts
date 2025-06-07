@@ -2,12 +2,15 @@ import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
 import { deepseekService } from '../services/deepseekService';
+import { notificationService } from '../services/notificationService';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
   isProcessing: boolean;
   currentStep: string;
   progress: number;
+  estimatedTimeRemaining: number | null;
+  totalEstimatedTime: number | null;
   error: string | null;
   generateDataset: (files: FileData[], urls: UrlData[], enableWebAugmentation: boolean, fineTuningGoal: FineTuningGoal, enableGapFilling?: boolean) => Promise<void>;
   clearError: () => void;
@@ -18,17 +21,62 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentStep, setCurrentStep] = useState('');
   const [progress, setProgress] = useState(0);
+  const [estimatedTimeRemaining, setEstimatedTimeRemaining] = useState<number | null>(null);
+  const [totalEstimatedTime, setTotalEstimatedTime] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [startTime, setStartTime] = useState<number | null>(null);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  const updateProgress = useCallback((step: number, total: number, message: string) => {
+  const calculateTimeEstimates = useCallback((currentStepIndex: number, totalSteps: number, sourceCount: number, enableWebAugmentation: boolean, enableGapFilling: boolean) => {
+    // Base time estimates in seconds
+    const baseTimePerSource = 15; // 15 seconds per file/URL
+    const themeAnalysisTime = 20; // 20 seconds for theme identification
+    const qaGenerationTime = 45; // 45 seconds for Q&A generation
+    const webAugmentationTime = 60; // 60 seconds for web search and augmentation
+    const gapAnalysisTime = 30; // 30 seconds for gap analysis
+    const syntheticGenerationTime = 40; // 40 seconds for synthetic generation
+    const validationTime = 35; // 35 seconds for validation
+
+    let totalTime = sourceCount * baseTimePerSource + themeAnalysisTime + qaGenerationTime;
+    
+    if (enableWebAugmentation) {
+      totalTime += webAugmentationTime;
+    }
+    
+    if (enableGapFilling && deepseekService.isReady()) {
+      totalTime += gapAnalysisTime + syntheticGenerationTime + validationTime;
+    }
+
+    const progressRatio = currentStepIndex / totalSteps;
+    const elapsedTime = startTime ? (Date.now() - startTime) / 1000 : 0;
+    
+    // Adjust estimate based on actual elapsed time
+    if (elapsedTime > 0 && progressRatio > 0.1) {
+      const adjustedTotalTime = elapsedTime / progressRatio;
+      totalTime = Math.max(totalTime, adjustedTotalTime);
+    }
+
+    const remainingTime = Math.max(0, totalTime - elapsedTime);
+
+    return {
+      totalEstimatedTime: totalTime,
+      estimatedTimeRemaining: remainingTime
+    };
+  }, [startTime]);
+
+  const updateProgress = useCallback((step: number, total: number, message: string, sourceCount: number = 0, enableWebAugmentation: boolean = false, enableGapFilling: boolean = false) => {
     const progressPercent = Math.round((step / total) * 100);
     setProgress(progressPercent);
     setCurrentStep(message);
-  }, []);
+
+    // Calculate time estimates
+    const timeEstimates = calculateTimeEstimates(step, total, sourceCount, enableWebAugmentation, enableGapFilling);
+    setEstimatedTimeRemaining(timeEstimates.estimatedTimeRemaining);
+    setTotalEstimatedTime(timeEstimates.totalEstimatedTime);
+  }, [calculateTimeEstimates]);
 
   const generateDataset = useCallback(async (
     files: FileData[],
@@ -50,10 +98,16 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       return;
     }
 
+    // Request notification permission and show initial notification
+    await notificationService.requestPermission();
+    
     setIsProcessing(true);
     setError(null);
     setProcessedData(null);
     setProgress(0);
+    setStartTime(Date.now());
+    setEstimatedTimeRemaining(null);
+    setTotalEstimatedTime(null);
 
     try {
       const totalSources = readyFiles.length + readyUrls.length;
@@ -73,7 +127,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       for (let i = 0; i < readyFiles.length; i++) {
         const file = readyFiles[i];
         currentStepIndex++;
-        updateProgress(currentStepIndex, totalSteps, `Processing file: ${file.file.name}`);
+        updateProgress(currentStepIndex, totalSteps, `Processing file: ${file.file.name}`, totalSources, enableWebAugmentation, enableGapFilling);
 
         try {
           let cleanedText: string;
@@ -105,7 +159,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       for (let i = 0; i < readyUrls.length; i++) {
         const urlData = readyUrls[i];
         currentStepIndex++;
-        updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`);
+        updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`, totalSources, enableWebAugmentation, enableGapFilling);
 
         try {
           const cleanedText = await geminiService.cleanTextContent(
@@ -130,7 +184,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Step 2: Combine content and identify themes
       let combinedContent = cleanedTexts.join('\n\n---\n\n');
       currentStepIndex++;
-      updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...');
+      updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...', totalSources, enableWebAugmentation, enableGapFilling);
       
       const identifiedThemes = await geminiService.identifyThemes(combinedContent, fineTuningGoal);
       
@@ -141,11 +195,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       if (enableWebAugmentation) {
         if (identifiedThemes.length > 0) {
           currentStepIndex++;
-          updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`);
+          updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`, totalSources, enableWebAugmentation, enableGapFilling);
         }
 
         currentStepIndex++;
-        updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...');
+        updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...', totalSources, enableWebAugmentation, enableGapFilling);
         try {
           const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes, fineTuningGoal);
           combinedContent = result.augmentedText;
@@ -159,7 +213,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
       // Step 4: Generate initial Q&A pairs
       currentStepIndex++;
-      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs...');
+      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs...', totalSources, enableWebAugmentation, enableGapFilling);
       const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
 
       let finalQAPairs: QAPair[] = [...initialQAPairs];
@@ -172,7 +226,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         try {
           // Step 5: Identify knowledge gaps
           currentStepIndex++;
-          updateProgress(currentStepIndex, totalSteps, 'Analyzing dataset for knowledge gaps...');
+          updateProgress(currentStepIndex, totalSteps, 'Analyzing dataset for knowledge gaps...', totalSources, enableWebAugmentation, enableGapFilling);
           
           identifiedGaps = await deepseekService.identifyKnowledgeGaps(
             combinedContent,
@@ -184,7 +238,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           if (identifiedGaps.length > 0) {
             // Step 6: Generate synthetic Q&A pairs
             currentStepIndex++;
-            updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`);
+            updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
             
             const syntheticPairs = await deepseekService.generateSyntheticQAPairs(
               combinedContent,
@@ -197,7 +251,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
             // Step 7: Cross-validate synthetic pairs
             currentStepIndex++;
-            updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`);
+            updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling);
             
             const validatedPairs: QAPair[] = [];
             const validationThreshold = 0.7; // Minimum confidence for inclusion
@@ -231,7 +285,10 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   updateProgress(
                     currentStepIndex, 
                     totalSteps, 
-                    `Cross-validating synthetic Q&A pairs... (${i + 1}/${syntheticPairs.length}, ${validatedPairCount} validated)`
+                    `Cross-validating synthetic Q&A pairs... (${i + 1}/${syntheticPairs.length}, ${validatedPairCount} validated)`,
+                    totalSources,
+                    enableWebAugmentation,
+                    enableGapFilling
                   );
                 }
               } catch (validationError) {
@@ -273,6 +330,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       });
 
       setProgress(100);
+      setEstimatedTimeRemaining(0);
       
       let completionMessage = `Successfully generated ${finalQAPairs.length} Q&A pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
       
@@ -281,11 +339,20 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       }
       
       setCurrentStep(completionMessage);
+
+      // Send completion notification
+      await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
+
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(errorMessage);
       setCurrentStep('');
       setProgress(0);
+      setEstimatedTimeRemaining(null);
+      setTotalEstimatedTime(null);
+
+      // Send error notification
+      await notificationService.sendErrorNotification(errorMessage);
     } finally {
       setIsProcessing(false);
     }
@@ -296,6 +363,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     isProcessing,
     currentStep,
     progress,
+    estimatedTimeRemaining,
+    totalEstimatedTime,
     error,
     generateDataset,
     clearError,
