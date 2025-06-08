@@ -157,12 +157,22 @@ class OpenRouterService {
       }
     }
 
-    // Additional cleanup for common JSON formatting issues
+    // Enhanced JSON cleanup for common formatting issues
     jsonStr = jsonStr
       // Remove any trailing commas before closing brackets/braces
-      .replace(/,(\s*[}\]])/g, '$1');
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Fix common escape sequence issues
+      .replace(/\\n/g, '\\n')  // Ensure newlines are properly escaped
+      .replace(/\\t/g, '\\t')  // Ensure tabs are properly escaped
+      .replace(/\\r/g, '\\r')  // Ensure carriage returns are properly escaped
+      // Fix unescaped quotes within strings (this is tricky and might need refinement)
+      .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
+      // Remove any control characters that might break JSON parsing
+      .replace(/[\x00-\x1F\x7F]/g, '');
 
+    // Additional attempt to fix malformed JSON by finding and fixing common issues
     try {
+      // First attempt: try parsing as-is
       const parsed = JSON.parse(jsonStr);
       
       // Validate that it's an array
@@ -173,30 +183,104 @@ class OpenRouterService {
       
       console.log('[OPENROUTER] Successfully parsed JSON array with', parsed.length, 'items');
       return parsed;
-    } catch (error) {
-      console.error('[OPENROUTER] Failed to parse JSON response:', error);
-      console.error('[OPENROUTER] Raw response (first 500 chars):', responseText.substring(0, 500));
-      console.error('[OPENROUTER] Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
+    } catch (firstError) {
+      console.warn('[OPENROUTER] First parsing attempt failed, trying recovery methods');
       
-      // Try to find the exact position where JSON parsing failed
+      // Second attempt: try to fix truncated JSON
       try {
-        // Attempt to parse character by character to find the error position
-        for (let i = 0; i < jsonStr.length; i++) {
-          try {
-            JSON.parse(jsonStr.substring(0, i + 1));
-          } catch (e) {
-            if (i > 100) { // Only log if we got reasonably far
-              console.error('[OPENROUTER] JSON parsing failed around position', i, 'character:', jsonStr.charAt(i));
-              console.error('[OPENROUTER] Context:', jsonStr.substring(Math.max(0, i - 50), i + 50));
-              break;
+        // If the JSON appears to be truncated, try to close it properly
+        let fixedJson = jsonStr;
+        
+        // Count opening and closing brackets/braces to detect truncation
+        const openBrackets = (fixedJson.match(/\[/g) || []).length;
+        const closeBrackets = (fixedJson.match(/\]/g) || []).length;
+        const openBraces = (fixedJson.match(/\{/g) || []).length;
+        const closeBraces = (fixedJson.match(/\}/g) || []).length;
+        
+        console.log('[OPENROUTER] Bracket/brace count:', { openBrackets, closeBrackets, openBraces, closeBraces });
+        
+        // If we have unmatched brackets/braces, try to fix them
+        if (openBraces > closeBraces) {
+          const missingBraces = openBraces - closeBraces;
+          console.log('[OPENROUTER] Adding', missingBraces, 'missing closing braces');
+          fixedJson += '}'.repeat(missingBraces);
+        }
+        
+        if (openBrackets > closeBrackets) {
+          const missingBrackets = openBrackets - closeBrackets;
+          console.log('[OPENROUTER] Adding', missingBrackets, 'missing closing brackets');
+          fixedJson += ']'.repeat(missingBrackets);
+        }
+        
+        // Try parsing the fixed JSON
+        const parsed = JSON.parse(fixedJson);
+        
+        if (!Array.isArray(parsed)) {
+          throw new Error('Fixed response is not a JSON array');
+        }
+        
+        console.log('[OPENROUTER] Successfully parsed fixed JSON array with', parsed.length, 'items');
+        return parsed;
+        
+      } catch (secondError) {
+        console.error('[OPENROUTER] Second parsing attempt also failed');
+        
+        // Third attempt: try to extract valid JSON objects manually
+        try {
+          console.log('[OPENROUTER] Attempting manual JSON object extraction');
+          
+          // Look for individual JSON objects within the response
+          const objectMatches = jsonStr.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
+          
+          if (objectMatches && objectMatches.length > 0) {
+            console.log('[OPENROUTER] Found', objectMatches.length, 'potential JSON objects');
+            
+            const validObjects = [];
+            for (const objStr of objectMatches) {
+              try {
+                const obj = JSON.parse(objStr);
+                if (obj && typeof obj === 'object' && obj.user && obj.model) {
+                  validObjects.push(obj);
+                }
+              } catch {
+                // Skip invalid objects
+              }
+            }
+            
+            if (validObjects.length > 0) {
+              console.log('[OPENROUTER] Extracted', validObjects.length, 'valid objects');
+              return validObjects;
             }
           }
+          
+          // If all else fails, throw the original error with detailed information
+          throw firstError;
+          
+        } catch (thirdError) {
+          console.error('[OPENROUTER] All parsing attempts failed');
+          console.error('[OPENROUTER] Original error:', firstError.message);
+          console.error('[OPENROUTER] Raw response (first 1000 chars):', responseText.substring(0, 1000));
+          console.error('[OPENROUTER] Processed JSON string (first 1000 chars):', jsonStr.substring(0, 1000));
+          
+          // Try to find the exact position where JSON parsing failed
+          try {
+            for (let i = 100; i < Math.min(jsonStr.length, 1000); i += 100) {
+              try {
+                JSON.parse(jsonStr.substring(0, i));
+              } catch (e) {
+                console.error('[OPENROUTER] JSON parsing failed around position', i);
+                console.error('[OPENROUTER] Character at position:', jsonStr.charAt(i));
+                console.error('[OPENROUTER] Context:', jsonStr.substring(Math.max(0, i - 50), i + 50));
+                break;
+              }
+            }
+          } catch (e) {
+            console.error('[OPENROUTER] Could not determine exact parsing error position');
+          }
+          
+          throw new Error(`Invalid JSON response from OpenRouter: ${firstError.message}. Response preview: ${responseText.substring(0, 200)}...`);
         }
-      } catch (e) {
-        console.error('[OPENROUTER] Could not determine exact parsing error position');
       }
-      
-      throw new Error(`Invalid JSON response from OpenRouter: ${responseText.substring(0, 200)}...`);
     }
   }
 
@@ -317,44 +401,34 @@ For each Q&A pair, provide:
 - Target gap ID
 - Brief reasoning for how this Q&A addresses the gap
 
-Format as JSON array:
+CRITICAL JSON FORMATTING REQUIREMENTS:
+1. Respond with ONLY a valid JSON array - no other text
+2. Start with [ and end with ]
+3. All strings must be properly escaped
+4. Use double quotes for all strings
+5. No unescaped newlines, tabs, or quotes in string values
+6. Replace actual newlines with \\n, tabs with \\t, quotes with \\"
+7. Ensure all objects are properly closed
+8. No trailing commas
+
+Example format:
 [
   {
-    "user": "Natural question text",
-    "model": "Comprehensive answer text",
+    "user": "What is the main concept?",
+    "model": "The main concept is...",
     "isCorrect": true,
     "confidence": 0.9,
     "targetGap": "gap_1",
-    "generationReasoning": "Brief explanation of how this addresses the gap"
+    "generationReasoning": "Addresses core understanding gap"
   }
 ]
 
 REFERENCE CONTENT:
 ---
-${combinedContent.substring(0, 10000)}${combinedContent.length > 10000 ? '...' : ''}
+${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '...' : ''}
 ---
 
-ABSOLUTELY CRITICAL JSON FORMATTING REQUIREMENTS - THESE ARE MANDATORY AND NON-NEGOTIABLE:
-
-1. YOUR RESPONSE MUST BE A VALID, COMPLETE, AND PARSEABLE JSON ARRAY
-2. ALL STRING VALUES MUST BE PROPERLY DOUBLE-QUOTED AND ESCAPED
-3. NO CONTROL CHARACTERS (newlines, tabs, carriage returns) WITHIN STRING VALUES
-4. NO UNESCAPED QUOTES OR BACKSLASHES WITHIN STRING VALUES
-5. ALL STRINGS MUST BE TERMINATED PROPERLY - NO UNTERMINATED STRINGS
-6. USE \\n for line breaks within strings, \\t for tabs, \\" for quotes
-7. ENSURE PROPER COMMA PLACEMENT - NO TRAILING COMMAS
-8. THE RESPONSE MUST START WITH '[' AND END WITH ']'
-9. EACH OBJECT MUST BE PROPERLY CLOSED WITH '}'
-10. ALL PROPERTY NAMES MUST BE DOUBLE-QUOTED
-
-FORMATTING EXAMPLE FOR STRING VALUES:
-- CORRECT: "This is a proper string with \\"escaped quotes\\" and \\n line breaks"
-- INCORRECT: "This is improper with "unescaped quotes" and 
-actual line breaks"
-
-CRITICAL INSTRUCTION: You must respond with ONLY the JSON array. Do not include any conversational text, explanations, introductions, or markdown formatting. Start your response immediately with '[' and end with ']'. No other text should be included in your response. The JSON must be valid and parseable by standard JSON parsers.
-
-Generate exactly ${targetCount} additional synthetic Q&A pairs (with a small portion being incorrect) as a pure, valid JSON array:
+Generate exactly ${targetCount} additional synthetic Q&A pairs as a valid JSON array:
     `.trim();
 
     try {
