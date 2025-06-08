@@ -160,11 +160,7 @@ class OpenRouterService {
     // Additional cleanup for common JSON formatting issues
     jsonStr = jsonStr
       // Remove any trailing commas before closing brackets/braces
-      .replace(/,(\s*[}\]])/g, '$1')
-      // Fix common quote escaping issues
-      .replace(/\\"/g, '"')
-      .replace(/\\n/g, '\\n')
-      .replace(/\\t/g, '\\t');
+      .replace(/,(\s*[}\]])/g, '$1');
 
     try {
       const parsed = JSON.parse(jsonStr);
