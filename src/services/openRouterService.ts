@@ -11,25 +11,34 @@ class OpenRouterService {
   }
 
   private initialize(): void {
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+    // Try multiple possible API key names for backward compatibility
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || 
+                   import.meta.env.OPENROUTER_API_KEY ||
+                   import.meta.env.VITE_OPENROUTER_KEY;
+    
+    console.log('[OPENROUTER] Checking for API key...');
+    console.log('[OPENROUTER] Available env vars:', Object.keys(import.meta.env).filter(key => key.includes('OPENROUTER')));
     
     if (!apiKey?.trim()) {
-      console.error('OpenRouter API key not found in environment variables');
+      console.error('[OPENROUTER] API key not found. Checked: VITE_OPENROUTER_API_KEY, OPENROUTER_API_KEY, VITE_OPENROUTER_KEY');
+      console.error('[OPENROUTER] Please set VITE_OPENROUTER_API_KEY in your .env.local file');
       return;
     }
 
     this.apiKey = apiKey.trim();
     this.isInitialized = true;
-    console.log('OpenRouter service initialized successfully');
+    console.log('[OPENROUTER] Service initialized successfully with API key:', this.apiKey.substring(0, 10) + '...');
   }
 
   public isReady(): boolean {
-    return this.isInitialized && this.apiKey !== null;
+    const ready = this.isInitialized && this.apiKey !== null;
+    console.log('[OPENROUTER] Service ready check:', ready);
+    return ready;
   }
 
   private async makeRequest(messages: Array<{ role: string; content: string }>, temperature = 0.7): Promise<string> {
     if (!this.apiKey) {
-      throw new Error('OpenRouter service not initialized');
+      throw new Error('OpenRouter service not initialized - API key missing');
     }
 
     console.log('[OPENROUTER] Making API request with', messages.length, 'messages');

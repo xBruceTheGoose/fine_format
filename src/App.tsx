@@ -141,7 +141,7 @@ const App: React.FC = () => {
             <Alert
               type="warning"
               title="GEMINI API KEY REQUIRED"
-              message="Please set your Gemini API key in the .env.local file and restart the development server."
+              message="Please set your Gemini API key as VITE_GEMINI_API_KEY in the .env.local file and restart the development server."
             />
           )}
 
@@ -150,7 +150,7 @@ const App: React.FC = () => {
             <Alert
               type="warning"
               title="OPENROUTER API KEY REQUIRED FOR GAP FILLING"
-              message="Knowledge gap filling requires OpenRouter API access. Please set your OpenRouter API key in .env.local to enable synthetic Q&A generation."
+              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local to enable synthetic Q&A generation."
             />
           )}
 
@@ -447,6 +447,11 @@ const App: React.FC = () => {
                     <div className="text-accent text-sm font-mono ml-7">
                       🔍 Dual-model cross validation guarantees validity and relevance of synthetic data augments
                     </div>
+                    {!isOpenRouterReady && (
+                      <div className="text-warning text-sm font-mono ml-7">
+                        ⚠️ OpenRouter API key required for gap filling functionality
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
