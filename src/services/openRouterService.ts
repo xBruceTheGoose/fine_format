@@ -11,23 +11,12 @@ class OpenRouterService {
   }
 
   private initialize(): void {
-    // Debug: Log all environment variables that contain "OPENROUTER"
-    console.log('[OPENROUTER] All environment variables:');
-    Object.keys(import.meta.env).forEach(key => {
-      if (key.includes('OPENROUTER')) {
-        console.log(`[OPENROUTER] Found env var: ${key} = ${import.meta.env[key] ? import.meta.env[key].substring(0, 10) + '...' : 'undefined'}`);
-      }
-    });
-
     // Try multiple possible API key names for backward compatibility
     const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || 
                    import.meta.env.OPENROUTER_API_KEY ||
                    import.meta.env.VITE_OPENROUTER_KEY;
     
     console.log('[OPENROUTER] Checking for API key...');
-    console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
-    console.log('[OPENROUTER] OPENROUTER_API_KEY:', import.meta.env.OPENROUTER_API_KEY ? 'Found' : 'Not found');
-    console.log('[OPENROUTER] VITE_OPENROUTER_KEY:', import.meta.env.VITE_OPENROUTER_KEY ? 'Found' : 'Not found');
     
     if (!apiKey?.trim()) {
       console.error('[OPENROUTER] ❌ API key not found in any of the expected environment variables');
@@ -40,38 +29,36 @@ class OpenRouterService {
     this.isInitialized = true;
     console.log('[OPENROUTER] ✅ Service initialized successfully');
     console.log('[OPENROUTER] API key found:', this.apiKey.substring(0, 15) + '...');
-    console.log('[OPENROUTER] API key length:', this.apiKey.length);
     
     // Validate API key format
     if (!this.apiKey.startsWith('sk-or-v1-')) {
       console.warn('[OPENROUTER] ⚠️ API key does not start with expected prefix "sk-or-v1-"');
-      console.warn('[OPENROUTER] Current prefix:', this.apiKey.substring(0, 10));
     }
   }
 
   public isReady(): boolean {
     const ready = this.isInitialized && this.apiKey !== null;
-    console.log('[OPENROUTER] Service ready check:', {
-      isInitialized: this.isInitialized,
-      hasApiKey: this.apiKey !== null,
-      ready: ready
-    });
     return ready;
   }
 
-  private async makeRequest(messages: Array<{ role: string; content: string }>, temperature = 0.7): Promise<string> {
+  private async makeRequest(
+    messages: Array<{ role: string; content: string }>, 
+    temperature = 0.7,
+    maxTokens = 6000,
+    model = 'meta-llama/llama-3.1-8b-instruct:free'
+  ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('OpenRouter service not initialized - API key missing');
     }
 
-    console.log('[OPENROUTER] Making API request with', messages.length, 'messages');
+    console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens);
 
     // Create AbortController for timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('[OPENROUTER] Request timeout after 60 seconds');
+      console.log('[OPENROUTER] Request timeout after 90 seconds');
       controller.abort();
-    }, 60000); // 60 second timeout
+    }, 90000); // 90 second timeout for large responses
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -83,11 +70,13 @@ class OpenRouterService {
           'X-Title': 'Fine Format - AI Dataset Generator',
         },
         body: JSON.stringify({
-          model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+          model,
           messages,
           temperature,
-          max_tokens: 4000,
+          max_tokens: maxTokens,
           stream: false,
+          // Add response format hint for better JSON generation
+          response_format: { type: "json_object" }
         }),
         signal: controller.signal,
       });
@@ -107,15 +96,23 @@ class OpenRouterService {
         throw new Error('Invalid response from OpenRouter API');
       }
 
-      console.log('[OPENROUTER] Request successful, response length:', data.choices[0].message.content.length);
-      return data.choices[0].message.content;
+      const content = data.choices[0].message.content;
+      console.log('[OPENROUTER] Request successful, response length:', content.length);
+      
+      // Check if response was truncated
+      if (data.choices[0].finish_reason === 'length') {
+        console.warn('[OPENROUTER] Response was truncated due to max_tokens limit');
+        throw new Error('Response was truncated. The generated content exceeded the token limit. Please try with fewer Q&A pairs or increase the token limit.');
+      }
+      
+      return content;
 
     } catch (error) {
       clearTimeout(timeoutId);
       
       if (error.name === 'AbortError') {
         console.error('[OPENROUTER] Request aborted due to timeout');
-        throw new Error('OpenRouter API request timed out after 60 seconds');
+        throw new Error('OpenRouter API request timed out after 90 seconds');
       }
       
       console.error('[OPENROUTER] Request failed:', error);
@@ -136,203 +133,213 @@ class OpenRouterService {
       console.log('[OPENROUTER] Removed code fences from response');
     }
 
-    // Try to extract JSON from response that might contain conversational text
-    // Look for the first occurrence of '[' and the last occurrence of ']'
-    const firstBracket = jsonStr.indexOf('[');
-    const lastBracket = jsonStr.lastIndexOf(']');
+    // Enhanced JSON extraction - look for complete JSON array
+    const arrayStartPattern = /\[\s*\{/;
+    const arrayEndPattern = /\}\s*\]$/;
     
-    if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-      const extractedJson = jsonStr.substring(firstBracket, lastBracket + 1);
-      console.log('[OPENROUTER] Extracted JSON array from position', firstBracket, 'to', lastBracket);
+    const startMatch = jsonStr.search(arrayStartPattern);
+    const endMatch = jsonStr.search(arrayEndPattern);
+    
+    if (startMatch !== -1 && endMatch !== -1 && startMatch < endMatch) {
+      // Extract the JSON array portion
+      const extractedJson = jsonStr.substring(startMatch, endMatch + 2);
+      console.log('[OPENROUTER] Extracted JSON array from position', startMatch, 'to', endMatch + 2);
       
-      // Validate that the extracted portion is valid JSON before using it
+      // Validate extraction
       try {
         const testParse = JSON.parse(extractedJson);
         if (Array.isArray(testParse)) {
           jsonStr = extractedJson;
-          console.log('[OPENROUTER] Using extracted JSON array');
+          console.log('[OPENROUTER] Using extracted JSON array with', testParse.length, 'items');
         }
       } catch {
-        console.warn('[OPENROUTER] Extracted JSON is invalid, using original response');
+        console.warn('[OPENROUTER] Extracted JSON is invalid, trying cleanup on original');
       }
     }
 
-    // Enhanced JSON cleanup for common formatting issues
-    jsonStr = jsonStr
+    // Comprehensive JSON cleanup
+    jsonStr = this.cleanJsonString(jsonStr);
+
+    // Multi-stage parsing with progressive error recovery
+    return this.parseWithRecovery(jsonStr, responseText);
+  }
+
+  private cleanJsonString(jsonStr: string): string {
+    return jsonStr
       // Remove any trailing commas before closing brackets/braces
       .replace(/,(\s*[}\]])/g, '$1')
       // Fix common escape sequence issues
+      .replace(/\\\\/g, '\\')  // Fix double backslashes
       .replace(/\\n/g, '\\n')  // Ensure newlines are properly escaped
       .replace(/\\t/g, '\\t')  // Ensure tabs are properly escaped
       .replace(/\\r/g, '\\r')  // Ensure carriage returns are properly escaped
-      // Fix unescaped quotes within strings (this is tricky and might need refinement)
-      .replace(/"([^"]*)"([^"]*)"([^"]*)":/g, '"$1\\"$2\\"$3":')
-      // Remove any control characters that might break JSON parsing
-      .replace(/[\x00-\x1F\x7F]/g, '');
+      // Fix unescaped quotes within strings (more robust pattern)
+      .replace(/"([^"\\]*)\\?"([^"\\]*)"([^"\\]*)"/g, '"$1\\"$2\\"$3"')
+      // Remove control characters that break JSON parsing
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      // Fix common JSON formatting issues
+      .replace(/([^\\])"/g, '$1\\"')  // Escape unescaped quotes
+      .replace(/^"/g, '\\"')          // Escape quotes at start
+      // Remove any non-printable characters
+      .replace(/[^\x20-\x7E\n\r\t]/g, '');
+  }
 
-    // Additional attempt to fix malformed JSON by finding and fixing common issues
+  private parseWithRecovery(jsonStr: string, originalResponse: string): any {
+    // Stage 1: Direct parsing
     try {
-      // First attempt: try parsing as-is
       const parsed = JSON.parse(jsonStr);
-      
-      // Validate that it's an array
-      if (!Array.isArray(parsed)) {
-        console.error('[OPENROUTER] Response is not a JSON array:', typeof parsed);
+      if (Array.isArray(parsed)) {
+        console.log('[OPENROUTER] ✅ Direct parsing successful with', parsed.length, 'items');
+        return parsed;
+      } else {
         throw new Error('Response is not a JSON array');
       }
+    } catch (stage1Error) {
+      console.warn('[OPENROUTER] Stage 1 parsing failed:', stage1Error.message);
+    }
+
+    // Stage 2: Fix structural issues
+    try {
+      let fixedJson = this.fixStructuralIssues(jsonStr);
+      const parsed = JSON.parse(fixedJson);
       
-      console.log('[OPENROUTER] Successfully parsed JSON array with', parsed.length, 'items');
-      return parsed;
-    } catch (firstError) {
-      console.warn('[OPENROUTER] First parsing attempt failed, trying recovery methods');
-      
-      // Second attempt: try to fix truncated JSON
-      try {
-        // If the JSON appears to be truncated, try to close it properly
-        let fixedJson = jsonStr;
-        
-        // Count opening and closing brackets/braces to detect truncation
-        const openBrackets = (fixedJson.match(/\[/g) || []).length;
-        const closeBrackets = (fixedJson.match(/\]/g) || []).length;
-        const openBraces = (fixedJson.match(/\{/g) || []).length;
-        const closeBraces = (fixedJson.match(/\}/g) || []).length;
-        
-        console.log('[OPENROUTER] Bracket/brace count:', { openBrackets, closeBrackets, openBraces, closeBraces });
-        
-        // If we have unmatched brackets/braces, try to fix them
-        if (openBraces > closeBraces) {
-          const missingBraces = openBraces - closeBraces;
-          console.log('[OPENROUTER] Adding', missingBraces, 'missing closing braces');
-          fixedJson += '}'.repeat(missingBraces);
-        }
-        
-        if (openBrackets > closeBrackets) {
-          const missingBrackets = openBrackets - closeBrackets;
-          console.log('[OPENROUTER] Adding', missingBrackets, 'missing closing brackets');
-          fixedJson += ']'.repeat(missingBrackets);
-        }
-        
-        // Try parsing the fixed JSON
-        const parsed = JSON.parse(fixedJson);
-        
-        if (!Array.isArray(parsed)) {
-          throw new Error('Fixed response is not a JSON array');
-        }
-        
-        console.log('[OPENROUTER] Successfully parsed fixed JSON array with', parsed.length, 'items');
+      if (Array.isArray(parsed)) {
+        console.log('[OPENROUTER] ✅ Stage 2 parsing successful with', parsed.length, 'items');
         return parsed;
-        
-      } catch (secondError) {
-        console.error('[OPENROUTER] Second parsing attempt also failed');
-        
-        // Third attempt: try to extract valid JSON objects manually
-        try {
-          console.log('[OPENROUTER] Attempting manual JSON object extraction');
-          
-          // Look for individual JSON objects within the response
-          const objectMatches = jsonStr.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
-          
-          if (objectMatches && objectMatches.length > 0) {
-            console.log('[OPENROUTER] Found', objectMatches.length, 'potential JSON objects');
-            
-            const validObjects = [];
-            for (const objStr of objectMatches) {
-              try {
-                const obj = JSON.parse(objStr);
-                if (obj && typeof obj === 'object' && obj.user && obj.model) {
-                  validObjects.push(obj);
-                }
-              } catch {
-                // Skip invalid objects
-              }
-            }
-            
-            if (validObjects.length > 0) {
-              console.log('[OPENROUTER] Extracted', validObjects.length, 'valid objects');
-              return validObjects;
-            }
-          }
-          
-          // If all else fails, throw the original error with detailed information
-          throw firstError;
-          
-        } catch (thirdError) {
-          console.error('[OPENROUTER] All parsing attempts failed');
-          console.error('[OPENROUTER] Original error:', firstError.message);
-          console.error('[OPENROUTER] Raw response (first 1000 chars):', responseText.substring(0, 1000));
-          console.error('[OPENROUTER] Processed JSON string (first 1000 chars):', jsonStr.substring(0, 1000));
-          
-          // Try to find the exact position where JSON parsing failed
-          try {
-            for (let i = 100; i < Math.min(jsonStr.length, 1000); i += 100) {
-              try {
-                JSON.parse(jsonStr.substring(0, i));
-              } catch (e) {
-                console.error('[OPENROUTER] JSON parsing failed around position', i);
-                console.error('[OPENROUTER] Character at position:', jsonStr.charAt(i));
-                console.error('[OPENROUTER] Context:', jsonStr.substring(Math.max(0, i - 50), i + 50));
-                break;
-              }
-            }
-          } catch (e) {
-            console.error('[OPENROUTER] Could not determine exact parsing error position');
-          }
-          
-          throw new Error(`Invalid JSON response from OpenRouter: ${firstError.message}. Response preview: ${responseText.substring(0, 200)}...`);
+      } else {
+        throw new Error('Fixed response is not a JSON array');
+      }
+    } catch (stage2Error) {
+      console.warn('[OPENROUTER] Stage 2 parsing failed:', stage2Error.message);
+    }
+
+    // Stage 3: Extract individual objects
+    try {
+      const extractedObjects = this.extractIndividualObjects(jsonStr);
+      if (extractedObjects.length > 0) {
+        console.log('[OPENROUTER] ✅ Stage 3 extraction successful with', extractedObjects.length, 'objects');
+        return extractedObjects;
+      }
+    } catch (stage3Error) {
+      console.warn('[OPENROUTER] Stage 3 extraction failed:', stage3Error.message);
+    }
+
+    // Stage 4: Last resort - try to salvage partial data
+    try {
+      const partialData = this.extractPartialData(originalResponse);
+      if (partialData.length > 0) {
+        console.log('[OPENROUTER] ⚠️ Stage 4 partial extraction with', partialData.length, 'objects');
+        return partialData;
+      }
+    } catch (stage4Error) {
+      console.warn('[OPENROUTER] Stage 4 partial extraction failed:', stage4Error.message);
+    }
+
+    // All stages failed
+    console.error('[OPENROUTER] ❌ All parsing stages failed');
+    console.error('[OPENROUTER] Original response length:', originalResponse.length);
+    console.error('[OPENROUTER] Processed JSON length:', jsonStr.length);
+    console.error('[OPENROUTER] First 500 chars of original:', originalResponse.substring(0, 500));
+    console.error('[OPENROUTER] First 500 chars of processed:', jsonStr.substring(0, 500));
+    
+    throw new Error(`Failed to parse JSON response after all recovery attempts. Response may be malformed or truncated.`);
+  }
+
+  private fixStructuralIssues(jsonStr: string): string {
+    let fixed = jsonStr;
+    
+    // Count brackets and braces
+    const openBrackets = (fixed.match(/\[/g) || []).length;
+    const closeBrackets = (fixed.match(/\]/g) || []).length;
+    const openBraces = (fixed.match(/\{/g) || []).length;
+    const closeBraces = (fixed.match(/\}/g) || []).length;
+    
+    console.log('[OPENROUTER] Bracket/brace count:', { openBrackets, closeBrackets, openBraces, closeBraces });
+    
+    // Fix missing closing braces
+    if (openBraces > closeBraces) {
+      const missingBraces = openBraces - closeBraces;
+      console.log('[OPENROUTER] Adding', missingBraces, 'missing closing braces');
+      fixed += '}'.repeat(missingBraces);
+    }
+    
+    // Fix missing closing brackets
+    if (openBrackets > closeBrackets) {
+      const missingBrackets = openBrackets - closeBrackets;
+      console.log('[OPENROUTER] Adding', missingBrackets, 'missing closing brackets');
+      fixed += ']'.repeat(missingBrackets);
+    }
+    
+    return fixed;
+  }
+
+  private extractIndividualObjects(jsonStr: string): any[] {
+    console.log('[OPENROUTER] Attempting individual object extraction');
+    
+    // More sophisticated regex to match complete JSON objects
+    const objectPattern = /\{(?:[^{}]|{[^{}]*})*\}/g;
+    const objectMatches = jsonStr.match(objectPattern) || [];
+    
+    console.log('[OPENROUTER] Found', objectMatches.length, 'potential JSON objects');
+    
+    const validObjects = [];
+    for (let i = 0; i < objectMatches.length; i++) {
+      try {
+        const obj = JSON.parse(objectMatches[i]);
+        // Validate that it looks like a Q&A pair
+        if (obj && typeof obj === 'object' && 
+            typeof obj.user === 'string' && 
+            typeof obj.model === 'string' &&
+            typeof obj.isCorrect === 'boolean') {
+          validObjects.push(obj);
+          console.log('[OPENROUTER] Valid object', i + 1, 'extracted');
         }
+      } catch (parseError) {
+        console.warn('[OPENROUTER] Failed to parse object', i + 1, ':', parseError.message);
       }
     }
-  }
-
-  public async cleanContent(
-    content: string,
-    fileName: string,
-    contentType: 'text' | 'url' | 'multimodal' = 'text'
-  ): Promise<string> {
-    console.log('[OPENROUTER] Cleaning content for:', fileName, 'type:', contentType);
     
-    const prompt = `
-You are an expert content cleaning specialist using advanced AI to extract and clean textual content.
-
-TASK: Clean and extract the most relevant textual content from the provided source.
-
-SOURCE: ${fileName} (${contentType})
-
-CLEANING REQUIREMENTS:
-1. Extract ONLY the core textual information that would be valuable for AI training
-2. Remove advertisements, navigation elements, headers, footers, and boilerplate content
-3. Preserve code blocks, examples, and technical content that relate to the main subject matter
-4. Maintain the logical structure and flow of information
-5. Remove redundant or repetitive content
-6. Keep instructional content, tutorials, and educational material
-7. Preserve important formatting context (like lists, steps, procedures)
-8. Return clean, readable text without metadata or commentary
-
-IMPORTANT: If the content includes code blocks, examples, or technical instructions that are part of the main educational or informational content, RETAIN them as they are valuable for training.
-
-Return ONLY the cleaned text content without any commentary, explanations, or metadata.
-
-CONTENT TO CLEAN:
----
-${content}
----
-    `.trim();
-
-    try {
-      console.log('[OPENROUTER] Sending content cleaning request');
-      const response = await this.makeRequest([
-        { role: 'user', content: prompt }
-      ], 0.3); // Lower temperature for more consistent cleaning
-
-      console.log('[OPENROUTER] Content cleaning completed, result length:', response.length);
-      return response.trim();
-    } catch (error: any) {
-      console.error('[OPENROUTER] Content cleaning failed:', error);
-      throw new Error(`Content cleaning failed: ${error.message || 'Unknown error'}`);
-    }
+    return validObjects;
   }
 
-  // Generate ADDITIONAL synthetic Q&A pairs based on Gemini-identified knowledge gaps
+  private extractPartialData(response: string): any[] {
+    console.log('[OPENROUTER] Attempting partial data extraction as last resort');
+    
+    // Look for patterns that might indicate Q&A pairs even in malformed JSON
+    const patterns = [
+      /"user":\s*"([^"]+)"/g,
+      /"model":\s*"([^"]+)"/g,
+      /"isCorrect":\s*(true|false)/g
+    ];
+    
+    const users = [...response.matchAll(patterns[0])].map(m => m[1]);
+    const models = [...response.matchAll(patterns[1])].map(m => m[1]);
+    const correctness = [...response.matchAll(patterns[2])].map(m => m[1] === 'true');
+    
+    const minLength = Math.min(users.length, models.length, correctness.length);
+    
+    if (minLength > 0) {
+      console.log('[OPENROUTER] Extracted', minLength, 'partial Q&A pairs');
+      
+      const partialPairs = [];
+      for (let i = 0; i < minLength; i++) {
+        partialPairs.push({
+          user: users[i],
+          model: models[i],
+          isCorrect: correctness[i],
+          confidence: correctness[i] ? 0.8 : 0.3,
+          targetGap: `gap_${i + 1}`,
+          generationReasoning: 'Extracted from partial response'
+        });
+      }
+      
+      return partialPairs;
+    }
+    
+    return [];
+  }
+
+  // Generate ADDITIONAL synthetic Q&A pairs with improved error handling
   public async generateSyntheticQAPairs(
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
@@ -347,95 +354,43 @@ ${content}
       targetCount
     });
     
+    // Reduce target count if it's too large for reliable JSON generation
+    const adjustedTargetCount = Math.min(targetCount, 50); // Cap at 50 for reliability
+    if (adjustedTargetCount < targetCount) {
+      console.log('[OPENROUTER] Reduced target count from', targetCount, 'to', adjustedTargetCount, 'for reliability');
+    }
+    
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
+    const pairsPerGap = Math.ceil(adjustedTargetCount / knowledgeGaps.length);
 
-    const prompt = `
-You are an expert synthetic Q&A generator using the powerful Llama 3.3 Nemotron model to create high-quality ADDITIONAL training data for ${goalConfig?.name} fine-tuning.
+    const prompt = `You are an expert synthetic Q&A generator. Create exactly ${adjustedTargetCount} high-quality Q&A pairs in valid JSON format.
 
-CRITICAL: These are ADDITIONAL Q&A pairs to supplement an existing dataset of 100 Q&A pairs. Your goal is to generate ${targetCount} NEW synthetic pairs that fill specific knowledge gaps identified by advanced analysis.
+CRITICAL JSON REQUIREMENTS:
+1. Respond with ONLY a valid JSON array - no explanations, no markdown, no code blocks
+2. Start immediately with [ and end with ]
+3. Each object must have: "user", "model", "isCorrect", "confidence", "targetGap", "generationReasoning"
+4. All strings must be properly escaped (use \\" for quotes, \\n for newlines)
+5. No unescaped control characters or special characters
+6. Confidence: 0.85-0.95 for correct answers, 0.15-0.35 for incorrect answers
+7. Include approximately 5-10% incorrect answers for training discrimination
 
 FINE-TUNING GOAL: ${goalConfig?.name}
-FOCUS: ${goalConfig?.promptFocus}
+TARGET: ${adjustedTargetCount} Q&A pairs addressing these knowledge gaps:
 
-KNOWLEDGE GAPS TO ADDRESS (identified by Gemini analysis of existing 100 Q&A pairs):
-${knowledgeGaps.map((gap, i) => `
-${i + 1}. GAP ID: ${gap.id}
-   DESCRIPTION: ${gap.description}
-   THEME: ${gap.theme}
-   PRIORITY: ${gap.priority}
-   SUGGESTED QUESTION TYPES: ${gap.suggestedQuestionTypes.join(', ')}
-   RELATED CONCEPTS: ${gap.relatedConcepts.join(', ')}
-`).join('\n')}
+${knowledgeGaps.slice(0, 5).map((gap, i) => `${i + 1}. ${gap.id}: ${gap.description} (${gap.theme})`).join('\n')}
 
-GENERATION REQUIREMENTS:
-1. Create approximately ${pairsPerGap} Q&A pairs per knowledge gap (total target: ${targetCount})
-2. Include a small portion (5-10%) of incorrect answers for training discrimination
-3. These are SUPPLEMENTARY pairs - avoid duplicating coverage from the existing 100 pairs
-4. Questions should be natural, diverse, and aligned with ${goalConfig?.name} objectives
-5. Correct answers must be accurate, comprehensive, and based on the provided content
-6. Incorrect answers should be plausible but contain subtle factual errors (small portion only)
-7. Vary question complexity and types based on each gap's suggested question types
-8. Ensure answers demonstrate the desired ${goalConfig?.promptFocus}
-9. Focus specifically on filling the identified knowledge gaps with unique perspectives
+CONTENT REFERENCE:
+${combinedContent.substring(0, 4000)}${combinedContent.length > 4000 ? '...' : ''}
 
-QUALITY STANDARDS:
-- Questions should feel natural and user-generated
-- Correct answers should be informative and well-structured
-- Incorrect answers should be plausible but contain subtle factual errors (small portion)
-- Each Q&A should clearly address its target knowledge gap
-- Maintain consistency with the fine-tuning goal throughout
-- Provide unique value beyond the existing 100 Q&A pairs
-
-INCORRECT ANSWER GUIDELINES (for the small portion):
-- Make incorrect answers believable but factually wrong
-- Include common misconceptions or subtle errors
-- Maintain similar structure and tone to correct answers
-- Ensure they're useful for training the model to distinguish quality
-
-For each Q&A pair, provide:
-- Natural user question targeting the specific gap
-- Comprehensive answer based on content (correct or strategically incorrect)
-- Correctness flag (true for correct, false for incorrect)
-- Confidence score (0.8-0.95 for correct, 0.1-0.3 for incorrect)
-- Target gap ID
-- Brief reasoning for how this Q&A addresses the gap
-
-CRITICAL JSON FORMATTING REQUIREMENTS:
-1. Respond with ONLY a valid JSON array - no other text
-2. Start with [ and end with ]
-3. All strings must be properly escaped
-4. Use double quotes for all strings
-5. No unescaped newlines, tabs, or quotes in string values
-6. Replace actual newlines with \\n, tabs with \\t, quotes with \\"
-7. Ensure all objects are properly closed
-8. No trailing commas
-
-Example format:
-[
-  {
-    "user": "What is the main concept?",
-    "model": "The main concept is...",
-    "isCorrect": true,
-    "confidence": 0.9,
-    "targetGap": "gap_1",
-    "generationReasoning": "Addresses core understanding gap"
-  }
-]
-
-REFERENCE CONTENT:
----
-${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '...' : ''}
----
-
-Generate exactly ${targetCount} additional synthetic Q&A pairs as a valid JSON array:
-    `.trim();
+Generate exactly ${adjustedTargetCount} Q&A pairs as a JSON array:`;
 
     try {
       console.log('[OPENROUTER] Sending synthetic Q&A generation request');
+      
+      // Use higher token limit and more reliable model
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
-      ], 0.7); // Moderate temperature for creative but accurate generation
+      ], 0.6, 8000, 'meta-llama/llama-3.1-70b-instruct:free'); // Use larger model for better JSON
 
       console.log('[OPENROUTER] Received response, parsing JSON');
       const syntheticPairs = this.parseJsonResponse(response);
@@ -451,29 +406,42 @@ Generate exactly ${targetCount} additional synthetic Q&A pairs as a valid JSON a
         typeof pair.user === 'string' &&
         typeof pair.model === 'string' &&
         typeof pair.isCorrect === 'boolean' &&
-        typeof pair.targetGap === 'string' &&
         pair.user.trim().length > 0 &&
         pair.model.trim().length > 0
-      ).map(pair => ({
+      ).map((pair, index) => ({
         ...pair,
         source: 'synthetic' as const,
         confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
-        validationStatus: 'pending' as const
-      })).slice(0, targetCount);
+        validationStatus: 'pending' as const,
+        targetGap: pair.targetGap || `gap_${(index % knowledgeGaps.length) + 1}`,
+        generationReasoning: pair.generationReasoning || 'Generated to fill knowledge gap'
+      })).slice(0, adjustedTargetCount);
 
       console.log('[OPENROUTER] Synthetic Q&A generation completed:', {
-        requested: targetCount,
+        requested: adjustedTargetCount,
         generated: syntheticPairs.length,
         valid: validPairs.length,
         correct: validPairs.filter(p => p.isCorrect).length,
         incorrect: validPairs.filter(p => !p.isCorrect).length
       });
 
+      if (validPairs.length === 0) {
+        throw new Error('No valid Q&A pairs could be extracted from the response');
+      }
+
       return validPairs;
 
     } catch (error: any) {
       console.error('[OPENROUTER] Synthetic Q&A generation failed:', error);
-      throw new Error(`Synthetic Q&A generation failed: ${error.message || 'Unknown error'}`);
+      
+      // Provide more specific error messages
+      if (error.message.includes('truncated')) {
+        throw new Error(`Response was truncated. Try reducing the target count to ${Math.floor(adjustedTargetCount * 0.7)} pairs.`);
+      } else if (error.message.includes('JSON')) {
+        throw new Error(`JSON parsing failed. The AI model may have generated malformed output. Try again or reduce the complexity of the request.`);
+      } else {
+        throw new Error(`Synthetic Q&A generation failed: ${error.message || 'Unknown error'}`);
+      }
     }
   }
 }
