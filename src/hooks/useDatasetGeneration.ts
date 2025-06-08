@@ -1,9 +1,25 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
-import { openRouterService } from '../services/openRouterService';
-import { notificationService } from '../services/notificationService';
 import { SYNTHETIC_QA_TARGET } from '../constants';
+
+// Conditional import for OpenRouter service
+let openRouterService: any = null;
+try {
+  const openRouterModule = await import('../services/openRouterService');
+  openRouterService = openRouterModule.openRouterService;
+} catch (error) {
+  console.warn('OpenRouter service not available:', error);
+}
+
+// Conditional import for notification service
+let notificationService: any = null;
+try {
+  const notificationModule = await import('../services/notificationService');
+  notificationService = notificationModule.notificationService;
+} catch (error) {
+  console.warn('Notification service not available:', error);
+}
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -47,7 +63,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       totalTime += webAugmentationTime;
     }
     
-    if (enableGapFilling && openRouterService.isReady()) {
+    if (enableGapFilling && openRouterService?.isReady()) {
       totalTime += gapAnalysisTime + syntheticGenerationTime + validationTime;
     }
 
@@ -100,7 +116,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     }
 
     // Request notification permission and show initial notification
-    await notificationService.requestPermission();
+    if (notificationService) {
+      try {
+        await notificationService.requestPermission();
+      } catch (error) {
+        console.warn('Failed to request notification permission:', error);
+      }
+    }
     
     setIsProcessing(true);
     setError(null);
@@ -116,7 +138,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Calculate total steps based on enabled features
       let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
-      if (enableGapFilling && openRouterService.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
+      if (enableGapFilling && openRouterService?.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
       
       let currentStepIndex = 0;
 
@@ -223,7 +245,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let validatedPairCount = 0;
 
       // Step 5-7: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
-      if (enableGapFilling && openRouterService.isReady()) {
+      if (enableGapFilling && openRouterService?.isReady()) {
         try {
           // Step 5: Identify knowledge gaps using Gemini analysis of the generated dataset
           currentStepIndex++;
@@ -306,7 +328,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           // Continue with original Q&A pairs only
           setError('Knowledge gap filling encountered issues, proceeding with original dataset.');
         }
-      } else if (enableGapFilling && !openRouterService.isReady()) {
+      } else if (enableGapFilling && !openRouterService?.isReady()) {
         console.warn('Knowledge gap filling requested but OpenRouter service not available');
       }
 
@@ -327,7 +349,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         syntheticPairCount,
         validatedPairCount,
         identifiedGaps,
-        gapFillingEnabled: enableGapFilling && openRouterService.isReady()
+        gapFillingEnabled: enableGapFilling && openRouterService?.isReady()
       });
 
       setProgress(100);
@@ -342,7 +364,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setCurrentStep(completionMessage);
 
       // Send completion notification
-      await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
+      if (notificationService) {
+        try {
+          await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
+        } catch (error) {
+          console.warn('Failed to send completion notification:', error);
+        }
+      }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -353,7 +381,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setTotalEstimatedTime(null);
 
       // Send error notification
-      await notificationService.sendErrorNotification(errorMessage);
+      if (notificationService) {
+        try {
+          await notificationService.sendErrorNotification(errorMessage);
+        } catch (error) {
+          console.warn('Failed to send error notification:', error);
+        }
+      }
     } finally {
       setIsProcessing(false);
     }

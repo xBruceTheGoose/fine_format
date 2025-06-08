@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
-import { openRouterService } from './services/openRouterService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
@@ -13,6 +12,16 @@ import { Alert } from './components/ui/Alert';
 import { Card, CardContent, CardHeader } from './components/ui/Card';
 import { Tooltip } from './components/ui/Tooltip';
 import { FINE_TUNING_GOALS } from './constants';
+
+// Conditional import for OpenRouter service
+let openRouterService: any = null;
+try {
+  import('./services/openRouterService').then(module => {
+    openRouterService = module.openRouterService;
+  });
+} catch (error) {
+  console.warn('OpenRouter service not available:', error);
+}
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
@@ -35,7 +44,7 @@ const App: React.FC = () => {
   } = useDatasetGeneration();
 
   const isGeminiReady = geminiService.isReady();
-  const isOpenRouterReady = openRouterService.isReady();
+  const isOpenRouterReady = openRouterService?.isReady() || false;
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;

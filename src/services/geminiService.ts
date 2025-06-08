@@ -11,7 +11,8 @@ class GeminiService {
   }
 
   private initialize(): void {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    // Try both possible API key names for backward compatibility
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
     
     if (!apiKey?.trim()) {
       console.error('Gemini API key not found in environment variables');
@@ -21,6 +22,7 @@ class GeminiService {
     try {
       this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
       this.isInitialized = true;
+      console.log('Gemini service initialized successfully');
     } catch (error) {
       console.error('Failed to initialize GoogleGenAI:', error);
       this.isInitialized = false;
@@ -41,18 +43,29 @@ class GeminiService {
       jsonStr = match[1].trim();
     }
 
-    // Extract JSON array by finding the first '[' and last ']'
+    // Try to find JSON array boundaries more carefully
     const firstBracket = jsonStr.indexOf('[');
     const lastBracket = jsonStr.lastIndexOf(']');
     
     if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-      jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+      const potentialJson = jsonStr.substring(firstBracket, lastBracket + 1);
+      
+      // Validate that this looks like valid JSON before using it
+      try {
+        JSON.parse(potentialJson);
+        jsonStr = potentialJson;
+      } catch {
+        // If extracted portion is invalid, use original
+        console.warn('Extracted JSON portion is invalid, using original response');
+      }
     }
 
     try {
       return JSON.parse(jsonStr);
     } catch (error) {
       console.error('Failed to parse JSON response:', error);
+      console.error('Raw response (first 500 chars):', responseText.substring(0, 500));
+      console.error('Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
       throw new Error(`Invalid JSON response from Gemini: ${responseText.substring(0, 200)}...`);
     }
   }
