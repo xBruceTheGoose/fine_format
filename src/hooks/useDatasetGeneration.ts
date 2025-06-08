@@ -47,15 +47,15 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     setError(null);
   }, []);
 
-  const calculateTimeEstimates = useCallback((currentStepIndex: number, totalSteps: number, sourceCount: number, enableWebAugmentation: boolean, enableGapFilling: boolean) => {
+  const calculateTimeEstimates = useCallback((currentStepIndex: number, totalSteps: number, sourceCount: number, enableWebAugmentation: boolean, enableGapFilling: boolean, gapCount: number = 0) => {
     // Base time estimates in seconds
     const baseTimePerSource = 15; // 15 seconds per file/URL
     const themeAnalysisTime = 20; // 20 seconds for theme identification
     const qaGenerationTime = 45; // 45 seconds for Q&A generation
     const webAugmentationTime = 60; // 60 seconds for web search and augmentation
     const gapAnalysisTime = 30; // 30 seconds for gap analysis
-    const syntheticGenerationTime = 50; // 50 seconds for synthetic generation (more pairs)
-    const validationTime = 45; // 45 seconds for validation (more pairs)
+    const syntheticGenerationTimePerGap = 15; // 15 seconds per gap (individual requests)
+    const validationTimePerPair = 3; // 3 seconds per validation (faster individual validation)
 
     let totalTime = sourceCount * baseTimePerSource + themeAnalysisTime + qaGenerationTime;
     
@@ -64,7 +64,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     }
     
     if (enableGapFilling && openRouterService?.isReady()) {
-      totalTime += gapAnalysisTime + syntheticGenerationTime + validationTime;
+      totalTime += gapAnalysisTime;
+      totalTime += gapCount * syntheticGenerationTimePerGap; // Individual gap processing
+      totalTime += (gapCount * 10) * validationTimePerPair; // Estimate 10 pairs per gap for validation
     }
 
     const progressRatio = currentStepIndex / totalSteps;
@@ -84,13 +86,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     };
   }, [startTime]);
 
-  const updateProgress = useCallback((step: number, total: number, message: string, sourceCount: number = 0, enableWebAugmentation: boolean = false, enableGapFilling: boolean = false) => {
+  const updateProgress = useCallback((step: number, total: number, message: string, sourceCount: number = 0, enableWebAugmentation: boolean = false, enableGapFilling: boolean = false, gapCount: number = 0) => {
     const progressPercent = Math.round((step / total) * 100);
     setProgress(progressPercent);
     setCurrentStep(message);
 
     // Calculate time estimates
-    const timeEstimates = calculateTimeEstimates(step, total, sourceCount, enableWebAugmentation, enableGapFilling);
+    const timeEstimates = calculateTimeEstimates(step, total, sourceCount, enableWebAugmentation, enableGapFilling, gapCount);
     setEstimatedTimeRemaining(timeEstimates.estimatedTimeRemaining);
     setTotalEstimatedTime(timeEstimates.totalEstimatedTime);
 
@@ -318,79 +320,121 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           console.log(`[DATASET_GENERATION] Identified ${identifiedGaps.length} knowledge gaps:`, identifiedGaps.map(g => g.id));
 
           if (identifiedGaps.length > 0) {
-            // Step 6: Generate ADDITIONAL synthetic Q&A pairs using OpenRouter (Nvidia Nemotron)
+            // Step 6: Generate ADDITIONAL synthetic Q&A pairs using OpenRouter (individual gap processing)
             currentStepIndex++;
-            console.log(`[DATASET_GENERATION] Starting synthetic Q&A generation for ${identifiedGaps.length} gaps`);
-            updateProgress(currentStepIndex, totalSteps, `Generating ${SYNTHETIC_QA_TARGET} additional synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
+            console.log(`[DATASET_GENERATION] Starting individual synthetic Q&A generation for ${identifiedGaps.length} gaps`);
+            updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
             
-            const syntheticPairs = await openRouterService.generateSyntheticQAPairs(
-              combinedContent,
-              identifiedGaps,
-              fineTuningGoal,
-              SYNTHETIC_QA_TARGET // Target 50-100 additional pairs
-            );
-
-            syntheticPairCount = syntheticPairs.length;
-            console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} synthetic Q&A pairs`);
-
-            // Step 7: Cross-validate synthetic pairs using Gemini
-            currentStepIndex++;
-            console.log('[DATASET_GENERATION] Starting cross-validation of synthetic pairs');
-            updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling);
+            // Process each gap individually to prevent token overload
+            const allSyntheticPairs: SyntheticQAPair[] = [];
+            const pairsPerGap = Math.min(15, Math.ceil(SYNTHETIC_QA_TARGET / identifiedGaps.length));
             
-            const validatedPairs: QAPair[] = [];
-            const validationThreshold = 0.7; // Minimum confidence for inclusion
-
-            for (let i = 0; i < syntheticPairs.length; i++) {
-              console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${syntheticPairs.length}`);
+            for (let gapIndex = 0; gapIndex < identifiedGaps.length; gapIndex++) {
+              const gap = identifiedGaps[gapIndex];
+              
               try {
-                const validation = await geminiService.validateQAPair(
-                  syntheticPairs[i],
-                  combinedContent,
-                  fineTuningGoal
+                console.log(`[DATASET_GENERATION] Processing gap ${gapIndex + 1}/${identifiedGaps.length}: ${gap.id}`);
+                updateProgress(
+                  currentStepIndex, 
+                  totalSteps, 
+                  `Generating synthetic Q&A pairs for gap ${gapIndex + 1}/${identifiedGaps.length}: ${gap.description.substring(0, 50)}...`,
+                  totalSources,
+                  enableWebAugmentation,
+                  enableGapFilling,
+                  identifiedGaps.length
                 );
 
-                console.log(`[DATASET_GENERATION] Validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
+                const gapPairs = await openRouterService.generateSyntheticQAPairsForGap(
+                  combinedContent,
+                  gap,
+                  fineTuningGoal,
+                  pairsPerGap
+                );
 
-                // Update the synthetic pair with validation results
-                const validatedPair: QAPair = {
-                  ...syntheticPairs[i],
-                  validationStatus: validation.isValid && validation.confidence >= validationThreshold ? 'validated' : 'rejected',
-                  validationConfidence: validation.confidence,
-                  confidence: validation.isValid ? 
-                    Math.min(syntheticPairs[i].confidence || 0.9, validation.factualAccuracy) :
-                    Math.max(0.1, validation.factualAccuracy * 0.5)
-                };
+                allSyntheticPairs.push(...gapPairs);
+                console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
 
-                // Only include pairs that pass validation
-                if (validation.isValid && validation.confidence >= validationThreshold) {
-                  validatedPairs.push(validatedPair);
-                  validatedPairCount++;
-                  console.log(`[DATASET_GENERATION] Pair ${i + 1} validated and included (total validated: ${validatedPairCount})`);
-                } else {
-                  console.log(`[DATASET_GENERATION] Pair ${i + 1} rejected (confidence: ${validation.confidence}, threshold: ${validationThreshold})`);
+                // Add a small delay between requests to avoid rate limiting
+                if (gapIndex < identifiedGaps.length - 1) {
+                  await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
                 }
 
-                // Update progress for each validation
-                if (i % 5 === 0 || i === syntheticPairs.length - 1) {
-                  updateProgress(
-                    currentStepIndex, 
-                    totalSteps, 
-                    `Cross-validating synthetic Q&A pairs... (${i + 1}/${syntheticPairs.length}, ${validatedPairCount} validated)`,
-                    totalSources,
-                    enableWebAugmentation,
-                    enableGapFilling
-                  );
-                }
-              } catch (validationError) {
-                console.error(`[DATASET_GENERATION] Validation failed for synthetic pair ${i}:`, validationError);
-                // Continue with other pairs
+              } catch (gapError: any) {
+                console.error(`[DATASET_GENERATION] Failed to generate pairs for gap ${gap.id}:`, gapError);
+                // Continue with other gaps instead of failing completely
               }
             }
 
-            // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original 100)
-            finalQAPairs = [...initialQAPairs, ...validatedPairs];
-            console.log(`[DATASET_GENERATION] Final dataset: ${initialQAPairs.length} original + ${validatedPairs.length} validated synthetic = ${finalQAPairs.length} total pairs`);
+            syntheticPairCount = allSyntheticPairs.length;
+            console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${identifiedGaps.length} gaps`);
+
+            // Step 7: Cross-validate synthetic pairs using Gemini (individual validation)
+            if (allSyntheticPairs.length > 0) {
+              currentStepIndex++;
+              console.log('[DATASET_GENERATION] Starting individual cross-validation of synthetic pairs');
+              updateProgress(currentStepIndex, totalSteps, `Cross-validating ${allSyntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
+              
+              const validatedPairs: QAPair[] = [];
+              const validationThreshold = 0.7; // Minimum confidence for inclusion
+
+              for (let i = 0; i < allSyntheticPairs.length; i++) {
+                console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length}`);
+                try {
+                  const validation = await geminiService.validateQAPair(
+                    allSyntheticPairs[i],
+                    combinedContent,
+                    fineTuningGoal
+                  );
+
+                  console.log(`[DATASET_GENERATION] Validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
+
+                  // Update the synthetic pair with validation results
+                  const validatedPair: QAPair = {
+                    ...allSyntheticPairs[i],
+                    validationStatus: validation.isValid && validation.confidence >= validationThreshold ? 'validated' : 'rejected',
+                    validationConfidence: validation.confidence,
+                    confidence: validation.isValid ? 
+                      Math.min(allSyntheticPairs[i].confidence || 0.9, validation.factualAccuracy) :
+                      Math.max(0.1, validation.factualAccuracy * 0.5)
+                  };
+
+                  // Only include pairs that pass validation
+                  if (validation.isValid && validation.confidence >= validationThreshold) {
+                    validatedPairs.push(validatedPair);
+                    validatedPairCount++;
+                    console.log(`[DATASET_GENERATION] Pair ${i + 1} validated and included (total validated: ${validatedPairCount})`);
+                  } else {
+                    console.log(`[DATASET_GENERATION] Pair ${i + 1} rejected (confidence: ${validation.confidence}, threshold: ${validationThreshold})`);
+                  }
+
+                  // Update progress for every 5 validations or at the end
+                  if (i % 5 === 0 || i === allSyntheticPairs.length - 1) {
+                    updateProgress(
+                      currentStepIndex, 
+                      totalSteps, 
+                      `Cross-validating synthetic Q&A pairs... (${i + 1}/${allSyntheticPairs.length}, ${validatedPairCount} validated)`,
+                      totalSources,
+                      enableWebAugmentation,
+                      enableGapFilling,
+                      identifiedGaps.length
+                    );
+                  }
+
+                  // Small delay between validations to avoid overwhelming the API
+                  if (i < allSyntheticPairs.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500)); // 0.5 second delay
+                  }
+
+                } catch (validationError) {
+                  console.error(`[DATASET_GENERATION] Validation failed for synthetic pair ${i}:`, validationError);
+                  // Continue with other pairs
+                }
+              }
+
+              // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original 100)
+              finalQAPairs = [...initialQAPairs, ...validatedPairs];
+              console.log(`[DATASET_GENERATION] Final dataset: ${initialQAPairs.length} original + ${validatedPairs.length} validated synthetic = ${finalQAPairs.length} total pairs`);
+            }
           } else {
             console.log('[DATASET_GENERATION] No knowledge gaps identified, skipping synthetic generation');
           }
@@ -437,9 +481,15 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setProgress(100);
       setEstimatedTimeRemaining(0);
       
-      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content + ${validatedPairCount} validated synthetic pairs (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
+      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content`;
       
-      if (syntheticPairCount > 0) {
+      if (validatedPairCount > 0) {
+        completionMessage += ` + ${validatedPairCount} validated synthetic pairs`;
+      }
+      
+      completionMessage += ` (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
+      
+      if (identifiedGaps.length > 0) {
         completionMessage += ` Knowledge gaps addressed: ${identifiedGaps.length}.`;
       }
       
