@@ -20,6 +20,7 @@ class OpenRouterService {
 
     this.apiKey = apiKey.trim();
     this.isInitialized = true;
+    console.log('OpenRouter service initialized successfully');
   }
 
   public isReady(): boolean {
@@ -31,38 +32,68 @@ class OpenRouterService {
       throw new Error('OpenRouter service not initialized');
     }
 
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': window.location.origin,
-        'X-Title': 'Fine Format - AI Dataset Generator',
-      },
-      body: JSON.stringify({
-        model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
-        messages,
-        temperature,
-        max_tokens: 4000,
-        stream: false,
-      }),
-    });
+    console.log('[OPENROUTER] Making API request with', messages.length, 'messages');
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log('[OPENROUTER] Request timeout after 60 seconds');
+      controller.abort();
+    }, 60000); // 60 second timeout
+
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Fine Format - AI Dataset Generator',
+        },
+        body: JSON.stringify({
+          model: 'nvidia/llama-3.3-nemotron-super-49b-v1:free',
+          messages,
+          temperature,
+          max_tokens: 4000,
+          stream: false,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[OPENROUTER] API error:', response.status, response.statusText, errorText);
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.choices?.[0]?.message?.content) {
+        console.error('[OPENROUTER] Invalid response structure:', data);
+        throw new Error('Invalid response from OpenRouter API');
+      }
+
+      console.log('[OPENROUTER] Request successful, response length:', data.choices[0].message.content.length);
+      return data.choices[0].message.content;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        console.error('[OPENROUTER] Request aborted due to timeout');
+        throw new Error('OpenRouter API request timed out after 60 seconds');
+      }
+      
+      console.error('[OPENROUTER] Request failed:', error);
+      throw error;
     }
-
-    const data = await response.json();
-    
-    if (!data.choices?.[0]?.message?.content) {
-      throw new Error('Invalid response from OpenRouter API');
-    }
-
-    return data.choices[0].message.content;
   }
 
   private parseJsonResponse(responseText: string): any {
+    console.log('[OPENROUTER] Parsing JSON response, length:', responseText.length);
+    
     let jsonStr = responseText.trim();
     
     // Remove code fences if present
@@ -70,6 +101,7 @@ class OpenRouterService {
     const match = jsonStr.match(fenceRegex);
     if (match?.[1]) {
       jsonStr = match[1].trim();
+      console.log('[OPENROUTER] Removed code fences from response');
     }
 
     // Try to extract JSON from response that might contain conversational text
@@ -78,32 +110,64 @@ class OpenRouterService {
     const lastBracket = jsonStr.lastIndexOf(']');
     
     if (firstBracket !== -1 && lastBracket !== -1 && firstBracket < lastBracket) {
-      jsonStr = jsonStr.substring(firstBracket, lastBracket + 1);
+      const extractedJson = jsonStr.substring(firstBracket, lastBracket + 1);
+      console.log('[OPENROUTER] Extracted JSON array from position', firstBracket, 'to', lastBracket);
+      
+      // Validate that the extracted portion is valid JSON before using it
+      try {
+        const testParse = JSON.parse(extractedJson);
+        if (Array.isArray(testParse)) {
+          jsonStr = extractedJson;
+          console.log('[OPENROUTER] Using extracted JSON array');
+        }
+      } catch {
+        console.warn('[OPENROUTER] Extracted JSON is invalid, using original response');
+      }
     }
 
     // Additional cleanup for common JSON formatting issues
     jsonStr = jsonStr
-      // Fix unescaped quotes within strings (basic attempt)
-      .replace(/([^\\])"([^"]*[^\\])"([^,}\]])/g, '$1\\"$2\\"$3')
       // Remove any trailing commas before closing brackets/braces
       .replace(/,(\s*[}\]])/g, '$1')
-      // Ensure proper spacing around colons and commas
-      .replace(/:\s*([^",{\[\s])/g, ': "$1"')
-      .replace(/,\s*([^",{\[\s])/g, ', "$1"');
+      // Fix common quote escaping issues
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\\n')
+      .replace(/\\t/g, '\\t');
 
     try {
       const parsed = JSON.parse(jsonStr);
       
       // Validate that it's an array
       if (!Array.isArray(parsed)) {
+        console.error('[OPENROUTER] Response is not a JSON array:', typeof parsed);
         throw new Error('Response is not a JSON array');
       }
       
+      console.log('[OPENROUTER] Successfully parsed JSON array with', parsed.length, 'items');
       return parsed;
     } catch (error) {
-      console.error('Failed to parse JSON response from OpenRouter:', error);
-      console.error('Raw response:', responseText.substring(0, 500));
-      console.error('Processed JSON string:', jsonStr.substring(0, 500));
+      console.error('[OPENROUTER] Failed to parse JSON response:', error);
+      console.error('[OPENROUTER] Raw response (first 500 chars):', responseText.substring(0, 500));
+      console.error('[OPENROUTER] Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
+      
+      // Try to find the exact position where JSON parsing failed
+      try {
+        // Attempt to parse character by character to find the error position
+        for (let i = 0; i < jsonStr.length; i++) {
+          try {
+            JSON.parse(jsonStr.substring(0, i + 1));
+          } catch (e) {
+            if (i > 100) { // Only log if we got reasonably far
+              console.error('[OPENROUTER] JSON parsing failed around position', i, 'character:', jsonStr.charAt(i));
+              console.error('[OPENROUTER] Context:', jsonStr.substring(Math.max(0, i - 50), i + 50));
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[OPENROUTER] Could not determine exact parsing error position');
+      }
+      
       throw new Error(`Invalid JSON response from OpenRouter: ${responseText.substring(0, 200)}...`);
     }
   }
@@ -113,6 +177,8 @@ class OpenRouterService {
     fileName: string,
     contentType: 'text' | 'url' | 'multimodal' = 'text'
   ): Promise<string> {
+    console.log('[OPENROUTER] Cleaning content for:', fileName, 'type:', contentType);
+    
     const prompt = `
 You are an expert content cleaning specialist using advanced AI to extract and clean textual content.
 
@@ -141,13 +207,15 @@ ${content}
     `.trim();
 
     try {
+      console.log('[OPENROUTER] Sending content cleaning request');
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
       ], 0.3); // Lower temperature for more consistent cleaning
 
+      console.log('[OPENROUTER] Content cleaning completed, result length:', response.length);
       return response.trim();
     } catch (error: any) {
-      console.error('Content cleaning failed:', error);
+      console.error('[OPENROUTER] Content cleaning failed:', error);
       throw new Error(`Content cleaning failed: ${error.message || 'Unknown error'}`);
     }
   }
@@ -159,6 +227,14 @@ ${content}
     fineTuningGoal: FineTuningGoal = 'knowledge',
     targetCount: number = SYNTHETIC_QA_TARGET
   ): Promise<SyntheticQAPair[]> {
+    console.log('[OPENROUTER] Starting synthetic Q&A generation');
+    console.log('[OPENROUTER] Parameters:', {
+      contentLength: combinedContent.length,
+      gapCount: knowledgeGaps.length,
+      fineTuningGoal,
+      targetCount
+    });
+    
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const pairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
 
@@ -254,17 +330,21 @@ Generate exactly ${targetCount} additional synthetic Q&A pairs (with a small por
     `.trim();
 
     try {
+      console.log('[OPENROUTER] Sending synthetic Q&A generation request');
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
       ], 0.7); // Moderate temperature for creative but accurate generation
 
+      console.log('[OPENROUTER] Received response, parsing JSON');
       const syntheticPairs = this.parseJsonResponse(response);
 
       if (!Array.isArray(syntheticPairs)) {
+        console.error('[OPENROUTER] Response is not a valid JSON array');
         throw new Error('Response is not a valid JSON array');
       }
 
-      return syntheticPairs.filter((pair): pair is SyntheticQAPair =>
+      console.log('[OPENROUTER] Filtering and validating synthetic pairs');
+      const validPairs = syntheticPairs.filter((pair): pair is SyntheticQAPair =>
         pair &&
         typeof pair.user === 'string' &&
         typeof pair.model === 'string' &&
@@ -279,8 +359,18 @@ Generate exactly ${targetCount} additional synthetic Q&A pairs (with a small por
         validationStatus: 'pending' as const
       })).slice(0, targetCount);
 
+      console.log('[OPENROUTER] Synthetic Q&A generation completed:', {
+        requested: targetCount,
+        generated: syntheticPairs.length,
+        valid: validPairs.length,
+        correct: validPairs.filter(p => p.isCorrect).length,
+        incorrect: validPairs.filter(p => !p.isCorrect).length
+      });
+
+      return validPairs;
+
     } catch (error: any) {
-      console.error('Synthetic Q&A generation failed:', error);
+      console.error('[OPENROUTER] Synthetic Q&A generation failed:', error);
       throw new Error(`Synthetic Q&A generation failed: ${error.message || 'Unknown error'}`);
     }
   }

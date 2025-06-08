@@ -93,6 +93,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     const timeEstimates = calculateTimeEstimates(step, total, sourceCount, enableWebAugmentation, enableGapFilling);
     setEstimatedTimeRemaining(timeEstimates.estimatedTimeRemaining);
     setTotalEstimatedTime(timeEstimates.totalEstimatedTime);
+
+    // Log progress for debugging
+    console.log(`[PROGRESS] Step ${step}/${total} (${progressPercent}%): ${message}`);
   }, [calculateTimeEstimates]);
 
   const generateDataset = useCallback(async (
@@ -102,7 +105,19 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     fineTuningGoal: FineTuningGoal,
     enableGapFilling: boolean = true
   ) => {
+    console.log('[DATASET_GENERATION] Starting dataset generation process');
+    console.log('[DATASET_GENERATION] Parameters:', {
+      fileCount: files.length,
+      urlCount: urls.length,
+      enableWebAugmentation,
+      fineTuningGoal,
+      enableGapFilling,
+      geminiReady: geminiService.isReady(),
+      openRouterReady: openRouterService?.isReady() || false
+    });
+
     if (!geminiService.isReady()) {
+      console.error('[DATASET_GENERATION] Gemini service not ready');
       setError('Gemini service is not initialized. Please check your API key.');
       return;
     }
@@ -110,7 +125,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
     const readyUrls = urls.filter(u => u.status === 'fetched' && u.rawContent.trim());
     
+    console.log('[DATASET_GENERATION] Ready sources:', {
+      readyFiles: readyFiles.length,
+      readyUrls: readyUrls.length,
+      totalReady: readyFiles.length + readyUrls.length
+    });
+    
     if (readyFiles.length === 0 && readyUrls.length === 0) {
+      console.error('[DATASET_GENERATION] No valid sources ready');
       setError('No valid files or URLs ready for processing.');
       return;
     }
@@ -118,9 +140,10 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     // Request notification permission and show initial notification
     if (notificationService) {
       try {
+        console.log('[DATASET_GENERATION] Requesting notification permission');
         await notificationService.requestPermission();
       } catch (error) {
-        console.warn('Failed to request notification permission:', error);
+        console.warn('[DATASET_GENERATION] Failed to request notification permission:', error);
       }
     }
     
@@ -140,104 +163,137 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
       if (enableGapFilling && openRouterService?.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
       
+      console.log('[DATASET_GENERATION] Total steps calculated:', totalSteps);
+      
       let currentStepIndex = 0;
 
       // Step 1: Clean content from files and URLs
+      console.log('[DATASET_GENERATION] Starting content processing phase');
       const cleanedTexts: string[] = [];
       const successfulSources: string[] = [];
 
       // Process files
+      console.log('[DATASET_GENERATION] Processing files:', readyFiles.length);
       for (let i = 0; i < readyFiles.length; i++) {
         const file = readyFiles[i];
         currentStepIndex++;
+        console.log(`[DATASET_GENERATION] Processing file ${i + 1}/${readyFiles.length}: ${file.file.name}`);
         updateProgress(currentStepIndex, totalSteps, `Processing file: ${file.file.name}`, totalSources, enableWebAugmentation, enableGapFilling);
 
         try {
           let cleanedText: string;
           
+          console.log(`[DATASET_GENERATION] File ${file.file.name} is binary: ${file.isBinary}`);
           if (file.isBinary) {
+            console.log(`[DATASET_GENERATION] Cleaning binary content for ${file.file.name}`);
             cleanedText = await geminiService.cleanBinaryContent(
               file.rawContent,
               file.mimeType,
               file.file.name
             );
           } else {
+            console.log(`[DATASET_GENERATION] Cleaning text content for ${file.file.name}`);
             cleanedText = await geminiService.cleanTextContent(
               file.rawContent,
               file.file.name
             );
           }
 
+          console.log(`[DATASET_GENERATION] Cleaned text length for ${file.file.name}: ${cleanedText.length} characters`);
           if (cleanedText.trim()) {
             cleanedTexts.push(cleanedText);
             successfulSources.push(file.file.name);
+            console.log(`[DATASET_GENERATION] Successfully processed file: ${file.file.name}`);
+          } else {
+            console.warn(`[DATASET_GENERATION] No content extracted from file: ${file.file.name}`);
           }
         } catch (err) {
-          console.error(`Failed to process ${file.file.name}:`, err);
+          console.error(`[DATASET_GENERATION] Failed to process ${file.file.name}:`, err);
           // Continue with other sources
         }
       }
 
       // Process URLs
+      console.log('[DATASET_GENERATION] Processing URLs:', readyUrls.length);
       for (let i = 0; i < readyUrls.length; i++) {
         const urlData = readyUrls[i];
         currentStepIndex++;
+        console.log(`[DATASET_GENERATION] Processing URL ${i + 1}/${readyUrls.length}: ${urlData.url}`);
         updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`, totalSources, enableWebAugmentation, enableGapFilling);
 
         try {
+          console.log(`[DATASET_GENERATION] Cleaning text content for URL: ${urlData.url}`);
           const cleanedText = await geminiService.cleanTextContent(
             urlData.rawContent,
             urlData.title || urlData.url
           );
 
+          console.log(`[DATASET_GENERATION] Cleaned text length for ${urlData.url}: ${cleanedText.length} characters`);
           if (cleanedText.trim()) {
             cleanedTexts.push(cleanedText);
             successfulSources.push(urlData.title || urlData.url);
+            console.log(`[DATASET_GENERATION] Successfully processed URL: ${urlData.url}`);
+          } else {
+            console.warn(`[DATASET_GENERATION] No content extracted from URL: ${urlData.url}`);
           }
         } catch (err) {
-          console.error(`Failed to process ${urlData.url}:`, err);
+          console.error(`[DATASET_GENERATION] Failed to process ${urlData.url}:`, err);
           // Continue with other sources
         }
       }
 
+      console.log('[DATASET_GENERATION] Content processing complete. Successful sources:', successfulSources.length);
       if (cleanedTexts.length === 0) {
+        console.error('[DATASET_GENERATION] No content extracted from any sources');
         throw new Error('No content could be extracted from any sources.');
       }
 
       // Step 2: Combine content and identify themes
       let combinedContent = cleanedTexts.join('\n\n---\n\n');
+      console.log(`[DATASET_GENERATION] Combined content length: ${combinedContent.length} characters`);
+      
       currentStepIndex++;
+      console.log('[DATASET_GENERATION] Starting theme identification');
       updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...', totalSources, enableWebAugmentation, enableGapFilling);
       
       const identifiedThemes = await geminiService.identifyThemes(combinedContent, fineTuningGoal);
+      console.log('[DATASET_GENERATION] Identified themes:', identifiedThemes);
       
       let groundingMetadata;
       let isAugmented = false;
 
       // Step 3: Web augmentation (if enabled)
       if (enableWebAugmentation) {
+        console.log('[DATASET_GENERATION] Web augmentation enabled');
         if (identifiedThemes.length > 0) {
           currentStepIndex++;
+          console.log(`[DATASET_GENERATION] Found ${identifiedThemes.length} themes for web search`);
           updateProgress(currentStepIndex, totalSteps, `Found ${identifiedThemes.length} themes: ${identifiedThemes.slice(0, 2).join(', ')}${identifiedThemes.length > 2 ? '...' : ''}`, totalSources, enableWebAugmentation, enableGapFilling);
         }
 
         currentStepIndex++;
+        console.log('[DATASET_GENERATION] Starting web augmentation');
         updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...', totalSources, enableWebAugmentation, enableGapFilling);
         try {
           const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes, fineTuningGoal);
           combinedContent = result.augmentedText;
           groundingMetadata = result.groundingMetadata;
           isAugmented = true;
+          console.log('[DATASET_GENERATION] Web augmentation successful. New content length:', combinedContent.length);
         } catch (err) {
-          console.error('Web augmentation failed:', err);
+          console.error('[DATASET_GENERATION] Web augmentation failed:', err);
           setError('Web augmentation failed, proceeding with original content.');
         }
+      } else {
+        console.log('[DATASET_GENERATION] Web augmentation disabled');
       }
 
       // Step 4: Generate initial 100 Q&A pairs from original content
       currentStepIndex++;
+      console.log('[DATASET_GENERATION] Starting initial Q&A generation');
       updateProgress(currentStepIndex, totalSteps, 'Generating 100 comprehensive Q&A pairs from original content...', totalSources, enableWebAugmentation, enableGapFilling);
       const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
+      console.log(`[DATASET_GENERATION] Generated ${initialQAPairs.length} initial Q&A pairs`);
 
       let finalQAPairs: QAPair[] = [...initialQAPairs];
       let identifiedGaps: KnowledgeGap[] = [];
@@ -246,9 +302,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
       // Step 5-7: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
       if (enableGapFilling && openRouterService?.isReady()) {
+        console.log('[DATASET_GENERATION] Knowledge gap filling enabled and OpenRouter ready');
         try {
           // Step 5: Identify knowledge gaps using Gemini analysis of the generated dataset
           currentStepIndex++;
+          console.log('[DATASET_GENERATION] Starting knowledge gap analysis');
           updateProgress(currentStepIndex, totalSteps, 'Analyzing generated dataset for knowledge gaps...', totalSources, enableWebAugmentation, enableGapFilling);
           
           identifiedGaps = await geminiService.identifyKnowledgeGaps(
@@ -257,10 +315,12 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             initialQAPairs,
             fineTuningGoal
           );
+          console.log(`[DATASET_GENERATION] Identified ${identifiedGaps.length} knowledge gaps:`, identifiedGaps.map(g => g.id));
 
           if (identifiedGaps.length > 0) {
             // Step 6: Generate ADDITIONAL synthetic Q&A pairs using OpenRouter (Nvidia Nemotron)
             currentStepIndex++;
+            console.log(`[DATASET_GENERATION] Starting synthetic Q&A generation for ${identifiedGaps.length} gaps`);
             updateProgress(currentStepIndex, totalSteps, `Generating ${SYNTHETIC_QA_TARGET} additional synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling);
             
             const syntheticPairs = await openRouterService.generateSyntheticQAPairs(
@@ -271,21 +331,26 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             );
 
             syntheticPairCount = syntheticPairs.length;
+            console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} synthetic Q&A pairs`);
 
             // Step 7: Cross-validate synthetic pairs using Gemini
             currentStepIndex++;
+            console.log('[DATASET_GENERATION] Starting cross-validation of synthetic pairs');
             updateProgress(currentStepIndex, totalSteps, `Cross-validating ${syntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling);
             
             const validatedPairs: QAPair[] = [];
             const validationThreshold = 0.7; // Minimum confidence for inclusion
 
             for (let i = 0; i < syntheticPairs.length; i++) {
+              console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${syntheticPairs.length}`);
               try {
                 const validation = await geminiService.validateQAPair(
                   syntheticPairs[i],
                   combinedContent,
                   fineTuningGoal
                 );
+
+                console.log(`[DATASET_GENERATION] Validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
 
                 // Update the synthetic pair with validation results
                 const validatedPair: QAPair = {
@@ -301,6 +366,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                 if (validation.isValid && validation.confidence >= validationThreshold) {
                   validatedPairs.push(validatedPair);
                   validatedPairCount++;
+                  console.log(`[DATASET_GENERATION] Pair ${i + 1} validated and included (total validated: ${validatedPairCount})`);
+                } else {
+                  console.log(`[DATASET_GENERATION] Pair ${i + 1} rejected (confidence: ${validation.confidence}, threshold: ${validationThreshold})`);
                 }
 
                 // Update progress for each validation
@@ -315,26 +383,40 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   );
                 }
               } catch (validationError) {
-                console.error(`Validation failed for synthetic pair ${i}:`, validationError);
+                console.error(`[DATASET_GENERATION] Validation failed for synthetic pair ${i}:`, validationError);
                 // Continue with other pairs
               }
             }
 
             // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original 100)
             finalQAPairs = [...initialQAPairs, ...validatedPairs];
+            console.log(`[DATASET_GENERATION] Final dataset: ${initialQAPairs.length} original + ${validatedPairs.length} validated synthetic = ${finalQAPairs.length} total pairs`);
+          } else {
+            console.log('[DATASET_GENERATION] No knowledge gaps identified, skipping synthetic generation');
           }
         } catch (gapFillingError) {
-          console.error('Knowledge gap filling failed:', gapFillingError);
+          console.error('[DATASET_GENERATION] Knowledge gap filling failed:', gapFillingError);
           // Continue with original Q&A pairs only
           setError('Knowledge gap filling encountered issues, proceeding with original dataset.');
         }
       } else if (enableGapFilling && !openRouterService?.isReady()) {
-        console.warn('Knowledge gap filling requested but OpenRouter service not available');
+        console.warn('[DATASET_GENERATION] Knowledge gap filling requested but OpenRouter service not available');
+      } else {
+        console.log('[DATASET_GENERATION] Knowledge gap filling disabled');
       }
 
       // Calculate final statistics
       const correctAnswers = finalQAPairs.filter(pair => pair.isCorrect);
       const incorrectAnswers = finalQAPairs.filter(pair => !pair.isCorrect);
+
+      console.log('[DATASET_GENERATION] Final statistics:', {
+        totalPairs: finalQAPairs.length,
+        correctAnswers: correctAnswers.length,
+        incorrectAnswers: incorrectAnswers.length,
+        syntheticPairCount,
+        validatedPairCount,
+        identifiedGaps: identifiedGaps.length
+      });
 
       setProcessedData({
         combinedCleanedText: combinedContent,
@@ -362,18 +444,22 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       }
       
       setCurrentStep(completionMessage);
+      console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
 
       // Send completion notification
       if (notificationService) {
         try {
+          console.log('[DATASET_GENERATION] Sending completion notification');
           await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
         } catch (error) {
-          console.warn('Failed to send completion notification:', error);
+          console.warn('[DATASET_GENERATION] Failed to send completion notification:', error);
         }
       }
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      console.error('[DATASET_GENERATION] Process failed with error:', errorMessage);
+      console.error('[DATASET_GENERATION] Error stack:', err);
       setError(errorMessage);
       setCurrentStep('');
       setProgress(0);
@@ -383,12 +469,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Send error notification
       if (notificationService) {
         try {
+          console.log('[DATASET_GENERATION] Sending error notification');
           await notificationService.sendErrorNotification(errorMessage);
         } catch (error) {
-          console.warn('Failed to send error notification:', error);
+          console.warn('[DATASET_GENERATION] Failed to send error notification:', error);
         }
       }
     } finally {
+      console.log('[DATASET_GENERATION] Process finished, setting isProcessing to false');
       setIsProcessing(false);
     }
   }, [updateProgress]);
