@@ -11,28 +11,51 @@ class OpenRouterService {
   }
 
   private initialize(): void {
+    // Debug: Log all environment variables that contain "OPENROUTER"
+    console.log('[OPENROUTER] All environment variables:');
+    Object.keys(import.meta.env).forEach(key => {
+      if (key.includes('OPENROUTER')) {
+        console.log(`[OPENROUTER] Found env var: ${key} = ${import.meta.env[key] ? import.meta.env[key].substring(0, 10) + '...' : 'undefined'}`);
+      }
+    });
+
     // Try multiple possible API key names for backward compatibility
     const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || 
                    import.meta.env.OPENROUTER_API_KEY ||
                    import.meta.env.VITE_OPENROUTER_KEY;
     
     console.log('[OPENROUTER] Checking for API key...');
-    console.log('[OPENROUTER] Available env vars:', Object.keys(import.meta.env).filter(key => key.includes('OPENROUTER')));
+    console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
+    console.log('[OPENROUTER] OPENROUTER_API_KEY:', import.meta.env.OPENROUTER_API_KEY ? 'Found' : 'Not found');
+    console.log('[OPENROUTER] VITE_OPENROUTER_KEY:', import.meta.env.VITE_OPENROUTER_KEY ? 'Found' : 'Not found');
     
     if (!apiKey?.trim()) {
-      console.error('[OPENROUTER] API key not found. Checked: VITE_OPENROUTER_API_KEY, OPENROUTER_API_KEY, VITE_OPENROUTER_KEY');
-      console.error('[OPENROUTER] Please set VITE_OPENROUTER_API_KEY in your .env.local file');
+      console.error('[OPENROUTER] ❌ API key not found in any of the expected environment variables');
+      console.error('[OPENROUTER] Expected format in .env.local: VITE_OPENROUTER_API_KEY=sk-or-v1-...');
+      console.error('[OPENROUTER] Make sure to restart the development server after adding the API key');
       return;
     }
 
     this.apiKey = apiKey.trim();
     this.isInitialized = true;
-    console.log('[OPENROUTER] Service initialized successfully with API key:', this.apiKey.substring(0, 10) + '...');
+    console.log('[OPENROUTER] ✅ Service initialized successfully');
+    console.log('[OPENROUTER] API key found:', this.apiKey.substring(0, 15) + '...');
+    console.log('[OPENROUTER] API key length:', this.apiKey.length);
+    
+    // Validate API key format
+    if (!this.apiKey.startsWith('sk-or-v1-')) {
+      console.warn('[OPENROUTER] ⚠️ API key does not start with expected prefix "sk-or-v1-"');
+      console.warn('[OPENROUTER] Current prefix:', this.apiKey.substring(0, 10));
+    }
   }
 
   public isReady(): boolean {
     const ready = this.isInitialized && this.apiKey !== null;
-    console.log('[OPENROUTER] Service ready check:', ready);
+    console.log('[OPENROUTER] Service ready check:', {
+      isInitialized: this.isInitialized,
+      hasApiKey: this.apiKey !== null,
+      ready: ready
+    });
     return ready;
   }
 

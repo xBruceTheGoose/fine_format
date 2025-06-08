@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
 import { geminiService } from './services/geminiService';
@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [enableGapFilling, setEnableGapFilling] = useState(true);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   const [currentGoalIndex, setCurrentGoalIndex] = useState(1); // Start with 'knowledge' (index 1)
+  const [openRouterReady, setOpenRouterReady] = useState(false);
   
   const {
     processedData,
@@ -43,8 +44,31 @@ const App: React.FC = () => {
     clearError,
   } = useDatasetGeneration();
 
+  // Check OpenRouter service status periodically
+  useEffect(() => {
+    const checkOpenRouterStatus = () => {
+      if (openRouterService) {
+        const isReady = openRouterService.isReady();
+        setOpenRouterReady(isReady);
+        console.log('[APP] OpenRouter service status check:', isReady);
+      }
+    };
+
+    // Check immediately
+    checkOpenRouterStatus();
+
+    // Check every 2 seconds for the first 10 seconds (in case service loads async)
+    const interval = setInterval(checkOpenRouterStatus, 2000);
+    
+    // Clear interval after 10 seconds
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const isGeminiReady = geminiService.isReady();
-  const isOpenRouterReady = openRouterService?.isReady() || false;
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
@@ -146,12 +170,23 @@ const App: React.FC = () => {
           )}
 
           {/* OpenRouter Warning for Gap Filling */}
-          {enableGapFilling && !isOpenRouterReady && (
+          {enableGapFilling && !openRouterReady && (
             <Alert
               type="warning"
               title="OPENROUTER API KEY REQUIRED FOR GAP FILLING"
-              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local to enable synthetic Q&A generation."
+              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server. Check browser console for detailed debugging information."
             />
+          )}
+
+          {/* Debug Info for OpenRouter */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="text-xs font-mono text-muted p-3 bg-surface/30 rounded border border-border">
+              <div className="text-accent font-bold mb-2">🔧 DEBUG INFO:</div>
+              <div>Gemini Ready: {isGeminiReady ? '✅' : '❌'}</div>
+              <div>OpenRouter Ready: {openRouterReady ? '✅' : '❌'}</div>
+              <div>OpenRouter Service: {openRouterService ? 'Loaded' : 'Not Loaded'}</div>
+              <div className="text-warning mt-2">Check browser console for detailed API key detection logs</div>
+            </div>
           )}
 
           {/* Error Display */}
@@ -447,7 +482,7 @@ const App: React.FC = () => {
                     <div className="text-accent text-sm font-mono ml-7">
                       🔍 Dual-model cross validation guarantees validity and relevance of synthetic data augments
                     </div>
-                    {!isOpenRouterReady && (
+                    {!openRouterReady && (
                       <div className="text-warning text-sm font-mono ml-7">
                         ⚠️ OpenRouter API key required for gap filling functionality
                       </div>
@@ -470,7 +505,7 @@ const App: React.FC = () => {
               {isProcessing 
                 ? <span className="neon-text">GENERATING DATASET...</span>
                 : <span>
-                    <span className="neon-text">GENERATE 100{enableGapFilling && isOpenRouterReady ? '+' : ''} Q&A DATASET</span>
+                    <span className="neon-text">GENERATE 100{enableGapFilling && openRouterReady ? '+' : ''} Q&A DATASET</span>
                     <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
                   </span>
               }
