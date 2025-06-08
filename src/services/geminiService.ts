@@ -15,16 +15,17 @@ class GeminiService {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
     
     if (!apiKey?.trim()) {
-      console.error('Gemini API key not found in environment variables');
+      console.error('[GEMINI] API key not found in environment variables');
+      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY in .env.local file');
       return;
     }
 
     try {
       this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
       this.isInitialized = true;
-      console.log('Gemini service initialized successfully');
+      console.log('[GEMINI] ✅ Service initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize GoogleGenAI:', error);
+      console.error('[GEMINI] Failed to initialize GoogleGenAI:', error);
       this.isInitialized = false;
     }
   }
@@ -56,16 +57,16 @@ class GeminiService {
         jsonStr = potentialJson;
       } catch {
         // If extracted portion is invalid, use original
-        console.warn('Extracted JSON portion is invalid, using original response');
+        console.warn('[GEMINI] Extracted JSON portion is invalid, using original response');
       }
     }
 
     try {
       return JSON.parse(jsonStr);
     } catch (error) {
-      console.error('Failed to parse JSON response:', error);
-      console.error('Raw response (first 500 chars):', responseText.substring(0, 500));
-      console.error('Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
+      console.error('[GEMINI] Failed to parse JSON response:', error);
+      console.error('[GEMINI] Raw response (first 500 chars):', responseText.substring(0, 500));
+      console.error('[GEMINI] Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
       throw new Error(`Invalid JSON response from Gemini: ${responseText.substring(0, 200)}...`);
     }
   }
@@ -228,7 +229,7 @@ JSON Output:
 
       return validThemes.slice(0, 8); // Limit to 8 themes max
     } catch (error: any) {
-      console.error('Theme identification failed:', error);
+      console.error('[GEMINI] Theme identification failed:', error);
       // Return empty array if theme identification fails - web search will still work
       return [];
     }
@@ -616,7 +617,7 @@ JSON Output:
       ).slice(0, 8); // Limit to 8 gaps max
 
     } catch (error: any) {
-      console.error('Knowledge gap identification failed:', error);
+      console.error('[GEMINI] Knowledge gap identification failed:', error);
       throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
     }
   }
@@ -701,7 +702,7 @@ JSON Output:
       };
 
     } catch (error: any) {
-      console.error('Q&A validation failed:', error);
+      console.error('[GEMINI] Q&A validation failed:', error);
       // Return a conservative validation result on error
       return {
         isValid: false,

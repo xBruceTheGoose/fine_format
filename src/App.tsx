@@ -20,7 +20,7 @@ try {
     openRouterService = module.openRouterService;
   });
 } catch (error) {
-  console.warn('OpenRouter service not available:', error);
+  console.warn('[APP] OpenRouter service not available:', error);
 }
 
 const App: React.FC = () => {
@@ -50,23 +50,27 @@ const App: React.FC = () => {
       if (openRouterService) {
         const isReady = openRouterService.isReady();
         setOpenRouterReady(isReady);
-        console.log('[APP] OpenRouter service status check:', isReady);
+        
+        // Only log status changes to reduce console noise
+        if (isReady !== openRouterReady) {
+          console.log('[APP] OpenRouter service status changed:', isReady);
+        }
       }
     };
 
     // Check immediately
     checkOpenRouterStatus();
 
-    // Check every 2 seconds for the first 10 seconds (in case service loads async)
-    const interval = setInterval(checkOpenRouterStatus, 2000);
+    // Check every 5 seconds for the first 30 seconds (in case service loads async)
+    const interval = setInterval(checkOpenRouterStatus, 5000);
     
-    // Clear interval after 10 seconds
+    // Clear interval after 30 seconds
     setTimeout(() => {
       clearInterval(interval);
-    }, 10000);
+    }, 30000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [openRouterReady]);
 
   const isGeminiReady = geminiService.isReady();
   const readyFileCount = files.filter(f => f.status === 'read').length;
@@ -174,19 +178,8 @@ const App: React.FC = () => {
             <Alert
               type="warning"
               title="OPENROUTER API KEY REQUIRED FOR GAP FILLING"
-              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server. Check browser console for detailed debugging information."
+              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server."
             />
-          )}
-
-          {/* Debug Info for OpenRouter */}
-          {process.env.NODE_ENV === 'development' && (
-            <div className="text-xs font-mono text-muted p-3 bg-surface/30 rounded border border-border">
-              <div className="text-accent font-bold mb-2">🔧 DEBUG INFO:</div>
-              <div>Gemini Ready: {isGeminiReady ? '✅' : '❌'}</div>
-              <div>OpenRouter Ready: {openRouterReady ? '✅' : '❌'}</div>
-              <div>OpenRouter Service: {openRouterService ? 'Loaded' : 'Not Loaded'}</div>
-              <div className="text-warning mt-2">Check browser console for detailed API key detection logs</div>
-            </div>
           )}
 
           {/* Error Display */}
