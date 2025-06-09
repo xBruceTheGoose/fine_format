@@ -514,10 +514,10 @@ Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowl
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
-      // Use smaller token limit for individual gap requests with correct model
+      // Increased token limit from 2500 to 4000 to prevent truncation
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
-      ], 0.6, 2500, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Correct Nemotron model ID
+      ], 0.6, 4000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Increased max_tokens
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       
