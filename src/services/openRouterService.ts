@@ -1,5 +1,5 @@
 import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal, ValidationResult } from '../types';
-import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
+import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET_MIN, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class OpenRouterService {
   private apiKey: string | null = null;
@@ -725,7 +725,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    targetCount: number = SYNTHETIC_QA_TARGET,
+    targetCount: number = SYNTHETIC_QA_TARGET_MIN,
     onProgress?: (current: number, total: number, gapId: string) => void
   ): Promise<SyntheticQAPair[]> {
     console.log('[OPENROUTER] Starting individual gap-based synthetic Q&A generation');

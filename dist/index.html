@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fine Format - AI Fine-Tuning Dataset Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#00FF41',
+              light: '#39FF6B',
+              dark: '#00CC33',
+            },
+            secondary: '#dc1aff',
+            accent: '#00FFFF',
+            warning: '#FFFF00',
+            error: '#FF4444',
+            success: '#00FF41',
+            background: '#0A0A0A',
+            surface: '#1A1A1A',
+            foreground: '#00FF41',
+            border: '#333333',
+            muted: '#666666',
+          },
+          fontFamily: {
+            sans: ['Source Sans Pro', 'system-ui', 'sans-serif'],
+            mono: ['Source Code Pro', 'monospace'],
+          },
+          animation: {
+            'glow-pulse': 'glow-pulse 2s ease-in-out infinite alternate',
+            'scanline': 'scanline 2s linear infinite',
+            'flicker': 'flicker 0.15s infinite linear',
+            'matrix-rain': 'matrix-rain 20s linear infinite',
+          },
+          keyframes: {
+            'glow-pulse': {
+              '0%': {
+                textShadow: '0 0 3px #00FF41, 0 0 6px #00FF41, 0 0 9px #00FF41',
+                filter: 'brightness(1)'
+              },
+              '100%': {
+                textShadow: '0 0 5px #00FF41, 0 0 10px #00FF41, 0 0 15px #00FF41',
+                filter: 'brightness(1.1)'
+              }
+            },
+            'scanline': {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100vh)' }
+            },
+            'flicker': {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0.8' }
+            },
+            'matrix-rain': {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100vh)' }
+            }
+          },
+          boxShadow: {
+            'neon': '0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor',
+            'neon-lg': '0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor',
+            'cyber': '0 0 20px rgba(0, 255, 65, 0.3), inset 0 0 20px rgba(0, 255, 65, 0.05)',
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;900&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Cyberpunk scanline effect */
+    .scanlines::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      background: linear-gradient(
+        transparent 50%,
+        rgba(0, 255, 65, 0.02) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 1000;
+    }
+
+    /* Matrix-style background effect */
+    .matrix-bg::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        radial-gradient(circle at 20% 80%, rgba(0, 255, 65, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(220, 26, 255, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* Glitch text effect */
+    .glitch {
+      position: relative;
+    }
+
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .glitch::before {
+      animation: glitch-1 0.5s infinite;
+      color: #dc1aff;
+      z-index: -1;
+    }
+
+    .glitch::after {
+      animation: glitch-2 0.5s infinite;
+      color: #00FFFF;
+      z-index: -2;
+    }
+
+    @keyframes glitch-1 {
+      0%, 14%, 15%, 49%, 50%, 99%, 100% {
+        transform: translate(0);
+      }
+      15%, 49% {
+        transform: translate(-2px, 1px);
+      }
+    }
+
+    @keyframes glitch-2 {
+      0%, 20%, 21%, 62%, 63%, 99%, 100% {
+        transform: translate(0);
+      }
+      21%, 62% {
+        transform: translate(2px, -1px);
+      }
+    }
+
+    /* Neon border animation */
+    .neon-border {
+      border: 1px solid #00FF41;
+      box-shadow:
+        0 0 3px #00FF41,
+        inset 0 0 3px rgba(0, 255, 65, 0.05);
+      animation: border-flicker 2s infinite alternate;
+    }
+
+    @keyframes border-flicker {
+      0%, 100% {
+        border-color: #00FF41;
+        box-shadow:
+          0 0 3px #00FF41,
+          inset 0 0 3px rgba(0, 255, 65, 0.05);
+      }
+      50% {
+        border-color: #39FF6B;
+        box-shadow:
+          0 0 5px #39FF6B,
+          inset 0 0 5px rgba(57, 255, 107, 0.1);
+      }
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1A1A1A;
+      border: 1px solid #333333;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(45deg, #00FF41, #39FF6B);
+      border-radius: 4px;
+      box-shadow: 0 0 3px #00FF41;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(45deg, #39FF6B, #00FF41);
+      box-shadow: 0 0 5px #00FF41;
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/index-C8VoLNLa.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-HgUQ-qtf.css">
+</head>
+<body class="scanlines matrix-bg">
+  <div id="root"></div>
+</body>
+</html>
