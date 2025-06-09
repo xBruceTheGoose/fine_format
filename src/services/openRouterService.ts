@@ -58,7 +58,7 @@ class OpenRouterService {
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
     maxTokens = 3000, // Reduced default for individual gap requests
-    model = 'nvidia/nemotron-4-340b-instruct' // Updated to use Nvidia Nemotron model
+    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free' // Correct Nvidia Nemotron model ID
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('OpenRouter service not initialized - API key missing');
@@ -396,10 +396,10 @@ Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowl
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
-      // Use smaller token limit for individual gap requests
+      // Use smaller token limit for individual gap requests with correct model
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
-      ], 0.6, 2500, 'nvidia/nemotron-4-340b-instruct'); // Explicitly specify Nemotron model
+      ], 0.6, 2500, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Correct Nemotron model ID
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       const syntheticPairs = this.parseJsonResponse(response);
