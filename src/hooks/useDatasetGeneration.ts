@@ -368,25 +368,26 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             syntheticPairCount = allSyntheticPairs.length;
             console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${identifiedGaps.length} gaps`);
 
-            // Step 7: Cross-validate synthetic pairs using Gemini (individual validation)
+            // Step 7: Cross-validate synthetic pairs using OpenRouter Nemotron (individual validation)
             if (allSyntheticPairs.length > 0) {
               currentStepIndex++;
-              console.log('[DATASET_GENERATION] Starting individual cross-validation of synthetic pairs');
-              updateProgress(currentStepIndex, totalSteps, `Cross-validating ${allSyntheticPairs.length} synthetic Q&A pairs...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
+              console.log('[DATASET_GENERATION] Starting individual cross-validation of synthetic pairs using Nemotron');
+              updateProgress(currentStepIndex, totalSteps, `Cross-validating ${allSyntheticPairs.length} synthetic Q&A pairs using Nemotron...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
               
               const validatedPairs: QAPair[] = [];
               const validationThreshold = 0.7; // Minimum confidence for inclusion
 
               for (let i = 0; i < allSyntheticPairs.length; i++) {
-                console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length}`);
+                console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length} using Nemotron`);
                 try {
-                  const validation = await geminiService.validateQAPair(
+                  // Use OpenRouter Nemotron for validation instead of Gemini to avoid rate limits
+                  const validation = await openRouterService.validateQAPair(
                     allSyntheticPairs[i],
                     combinedContent,
                     fineTuningGoal
                   );
 
-                  console.log(`[DATASET_GENERATION] Validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
+                  console.log(`[DATASET_GENERATION] Nemotron validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
 
                   // Update the synthetic pair with validation results
                   const validatedPair: QAPair = {
@@ -412,7 +413,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                     updateProgress(
                       currentStepIndex, 
                       totalSteps, 
-                      `Cross-validating synthetic Q&A pairs... (${i + 1}/${allSyntheticPairs.length}, ${validatedPairCount} validated)`,
+                      `Cross-validating synthetic Q&A pairs using Nemotron... (${i + 1}/${allSyntheticPairs.length}, ${validatedPairCount} validated)`,
                       totalSources,
                       enableWebAugmentation,
                       enableGapFilling,
@@ -426,7 +427,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   }
 
                 } catch (validationError) {
-                  console.error(`[DATASET_GENERATION] Validation failed for synthetic pair ${i}:`, validationError);
+                  console.error(`[DATASET_GENERATION] Nemotron validation failed for synthetic pair ${i}:`, validationError);
                   // Continue with other pairs
                 }
               }

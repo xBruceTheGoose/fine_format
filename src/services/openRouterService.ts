@@ -1,4 +1,4 @@
-import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal } from '../types';
+import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal, ValidationResult } from '../types';
 import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class OpenRouterService {
@@ -352,6 +352,113 @@ class OpenRouterService {
     }
     
     return [];
+  }
+
+  // NEW: Validate Q&A pair using Nemotron model
+  public async validateQAPair(
+    syntheticPair: SyntheticQAPair,
+    referenceContent: string,
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<ValidationResult> {
+    console.log(`[OPENROUTER] Validating Q&A pair using Nemotron model`);
+    
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+
+    const prompt = `You are an expert fact-checker and Q&A validator. Validate this synthetic Q&A pair against the reference content.
+
+TASK: Provide validation as a JSON object with specific fields.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+SYNTHETIC Q&A PAIR TO VALIDATE:
+Question: ${syntheticPair.user}
+Answer: ${syntheticPair.model}
+Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
+Target Gap: ${syntheticPair.targetGap}
+
+VALIDATION CRITERIA:
+1. Factual Accuracy: Is the answer factually correct based on the reference content?
+2. Relevance: Does the Q&A pair align with the ${goalConfig?.name} objective?
+3. Quality: Is the answer comprehensive and well-structured?
+4. Consistency: Does the claimed correctness match the actual accuracy?
+5. Fine-tuning Value: Will this Q&A pair improve model performance for ${goalConfig?.promptFocus}?
+
+REFERENCE CONTENT:
+---
+${referenceContent.substring(0, 4000)}${referenceContent.length > 4000 ? '...' : ''}
+---
+
+Respond with ONLY a valid JSON object (no explanations, no markdown):
+{
+  "isValid": boolean,
+  "confidence": number (0.0-1.0),
+  "reasoning": "Brief explanation of validation decision",
+  "suggestedCorrection": "If invalid, suggest correction (optional)",
+  "factualAccuracy": number (0.0-1.0),
+  "relevanceScore": number (0.0-1.0)
+}`;
+
+    try {
+      console.log(`[OPENROUTER] Sending validation request using Nemotron`);
+      
+      const response = await this.makeRequest([
+        { role: 'user', content: prompt }
+      ], 0.3, 1500); // Lower temperature and tokens for validation
+
+      console.log(`[OPENROUTER] Received validation response, parsing JSON`);
+      
+      // Parse JSON response for validation
+      let jsonStr = response.trim();
+      
+      // Remove code fences if present
+      const fenceRegex = /^```(?:json)?\s*\n?(.*?)\n?\s*```$/s;
+      const match = jsonStr.match(fenceRegex);
+      if (match?.[1]) {
+        jsonStr = match[1].trim();
+      }
+
+      // Look for JSON object boundaries
+      const objectStart = jsonStr.indexOf('{');
+      const objectEnd = jsonStr.lastIndexOf('}');
+      
+      if (objectStart !== -1 && objectEnd !== -1 && objectStart < objectEnd) {
+        jsonStr = jsonStr.substring(objectStart, objectEnd + 1);
+      }
+
+      const validation = JSON.parse(jsonStr);
+
+      // Validate the response structure
+      if (typeof validation.isValid !== 'boolean' ||
+          typeof validation.confidence !== 'number' ||
+          typeof validation.reasoning !== 'string' ||
+          typeof validation.factualAccuracy !== 'number' ||
+          typeof validation.relevanceScore !== 'number') {
+        throw new Error('Invalid validation response structure');
+      }
+
+      console.log(`[OPENROUTER] Validation successful: valid=${validation.isValid}, confidence=${validation.confidence}`);
+
+      return {
+        isValid: validation.isValid,
+        confidence: Math.max(0, Math.min(1, validation.confidence)),
+        reasoning: validation.reasoning,
+        suggestedCorrection: validation.suggestedCorrection || undefined,
+        factualAccuracy: Math.max(0, Math.min(1, validation.factualAccuracy)),
+        relevanceScore: Math.max(0, Math.min(1, validation.relevanceScore))
+      };
+
+    } catch (error: any) {
+      console.error('[OPENROUTER] Q&A validation failed:', error);
+      // Return a conservative validation result on error
+      return {
+        isValid: false,
+        confidence: 0.1,
+        reasoning: `Validation failed due to error: ${error.message || 'Unknown error'}`,
+        factualAccuracy: 0.1,
+        relevanceScore: 0.1
+      };
+    }
   }
 
   // NEW: Generate synthetic Q&A pairs for a SINGLE knowledge gap
