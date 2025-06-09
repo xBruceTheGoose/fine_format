@@ -2,58 +2,129 @@ import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal, ValidationResult
 import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class OpenRouterService {
+  private apiKey: string | null = null;
   private isInitialized = false;
+  private baseUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
   constructor() {
     this.initialize();
   }
 
   private initialize(): void {
-    // For Netlify functions, we don't need client-side API keys
+    // Try multiple possible API key names for backward compatibility
+    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || 
+                   import.meta.env.OPENROUTER_API_KEY ||
+                   import.meta.env.VITE_OPENROUTER_KEY;
+    
+    console.log('[OPENROUTER] All environment variables:');
+    console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
+    console.log('[OPENROUTER] Found env var: VITE_OPENROUTER_API_KEY =', import.meta.env.VITE_OPENROUTER_API_KEY ? import.meta.env.VITE_OPENROUTER_API_KEY.substring(0, 15) + '...' : 'undefined');
+    
+    if (!apiKey?.trim()) {
+      console.error('[OPENROUTER] ❌ API key not found in any of the expected environment variables');
+      console.error('[OPENROUTER] Expected format in .env.local: VITE_OPENROUTER_API_KEY=sk-or-v1-...');
+      console.error('[OPENROUTER] Make sure to restart the development server after adding the API key');
+      return;
+    }
+
+    this.apiKey = apiKey.trim();
     this.isInitialized = true;
-    console.log('[OPENROUTER] ✅ Service initialized for Netlify functions');
+    console.log('[OPENROUTER] ✅ Service initialized successfully');
+    console.log('[OPENROUTER] API key found:', this.apiKey.substring(0, 15) + '...');
+    console.log('[OPENROUTER] API key length:', this.apiKey.length);
+    
+    // Validate API key format
+    if (!this.apiKey.startsWith('sk-or-v1-')) {
+      console.warn('[OPENROUTER] ⚠️ API key does not start with expected prefix "sk-or-v1-"');
+    }
   }
 
   public isReady(): boolean {
-    return this.isInitialized;
+    const ready = {
+      hasApiKey: this.apiKey !== null,
+      isInitialized: this.isInitialized,
+      ready: this.isInitialized && this.apiKey !== null
+    };
+    console.log('[OPENROUTER] Service ready check:', ready);
+    return ready.ready;
   }
 
   private async makeRequest(
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
-    maxTokens = 4000,
-    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'
+    maxTokens = 4000, // Increased default to prevent truncation
+    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free' // Use Nvidia Nemotron for better reasoning
   ): Promise<string> {
-    console.log('[OPENROUTER] Making API request to Netlify function with', messages.length, 'messages, max tokens:', maxTokens, 'model:', model);
+    if (!this.apiKey) {
+      throw new Error('OpenRouter service not initialized - API key missing');
+    }
+
+    console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens, 'model:', model);
+
+    // Create AbortController for timeout - increased for larger responses
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.log('[OPENROUTER] Request timeout after 90 seconds');
+      controller.abort();
+    }, 90000); // 90 second timeout for larger requests
 
     try {
-      const response = await fetch('/.netlify/functions/openrouter-chat', {
+      const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Fine Format - AI Dataset Generator',
         },
         body: JSON.stringify({
+          model,
           messages,
           temperature,
           max_tokens: maxTokens,
+          stream: false,
+          // Add additional parameters to prevent truncation
+          top_p: 0.95, // Slightly more diverse responses
+          frequency_penalty: 0.1, // Reduce repetition
+          presence_penalty: 0.1, // Encourage new topics
         }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('[OPENROUTER] API error:', response.status, response.statusText, errorText);
+        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
       
-      if (!data.content) {
+      if (!data.choices?.[0]?.message?.content) {
+        console.error('[OPENROUTER] Invalid response structure:', data);
         throw new Error('Invalid response from OpenRouter API');
       }
 
-      console.log('[OPENROUTER] Request successful, response length:', data.content.length);
-      return data.content;
+      const content = data.choices[0].message.content;
+      console.log('[OPENROUTER] Request successful, response length:', content.length);
+      
+      // Check if response was truncated and warn
+      if (data.choices[0].finish_reason === 'length') {
+        console.warn('[OPENROUTER] ⚠️ Response was truncated due to max_tokens limit. Consider increasing max_tokens.');
+        // Don't throw error, but log warning for monitoring
+      }
+      
+      return content;
 
-    } catch (error: any) {
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        console.error('[OPENROUTER] Request aborted due to timeout');
+        throw new Error('OpenRouter API request timed out after 90 seconds');
+      }
+      
       console.error('[OPENROUTER] Request failed:', error);
       throw error;
     }
@@ -130,6 +201,24 @@ class OpenRouterService {
       }
     } catch (stage1Error) {
       console.warn('[OPENROUTER] Stage 1 parsing failed:', stage1Error.message);
+      
+      // Safe error logging to prevent crashes during debugging
+      try {
+        const positionMatch = stage1Error.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const position = parseInt(positionMatch[1], 10);
+          console.error('[OPENROUTER] JSON parsing failed around position', position);
+          
+          if (position >= 0 && position < jsonStr.length) {
+            console.error('[OPENROUTER] character:', jsonStr.charAt(position));
+            const start = Math.max(0, position - 50);
+            const end = Math.min(jsonStr.length, position + 50);
+            console.error('[OPENROUTER] Context:', jsonStr.substring(start, end));
+          }
+        }
+      } catch (loggingError) {
+        console.warn('[OPENROUTER] Error during debug logging:', loggingError.message);
+      }
     }
 
     // Stage 2: Fix structural issues
@@ -273,7 +362,7 @@ class OpenRouterService {
     return [];
   }
 
-  // Generate validation context/basis for synthetic Q&A pairs
+  // NEW: Generate validation context/basis for synthetic Q&A pairs
   public async generateValidationContext(
     combinedContent: string,
     identifiedThemes: string[],
@@ -357,7 +446,7 @@ Create a structured validation context (1500-2000 words) that will serve as the 
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.3, 3500);
+      ], 0.3, 3500); // Lower temperature for consistency, adequate tokens for comprehensive context
 
       console.log('[OPENROUTER] Validation context generated successfully, length:', response.length);
       return response.trim();
@@ -368,7 +457,7 @@ Create a structured validation context (1500-2000 words) that will serve as the 
     }
   }
 
-  // Validate Q&A pair using the generated validation context
+  // UPDATED: Validate Q&A pair using the generated validation context
   public async validateQAPair(
     syntheticPair: SyntheticQAPair,
     validationContext: string,
@@ -430,7 +519,7 @@ Respond with ONLY a valid JSON object:
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.2, 1000);
+      ], 0.2, 1000); // Very low temperature for consistency, focused response
 
       console.log(`[OPENROUTER] Received validation response, parsing JSON`);
       
@@ -487,7 +576,7 @@ Respond with ONLY a valid JSON object:
     }
   }
 
-  // Generate synthetic Q&A pairs for a SINGLE knowledge gap with refined prompting
+  // UPDATED: Generate synthetic Q&A pairs for a SINGLE knowledge gap with refined prompting
   public async generateSyntheticQAPairsForGap(
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
@@ -569,13 +658,15 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
+      // Increased token limit to 5000 to prevent truncation of larger responses
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.6, 5000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free');
+      ], 0.6, 5000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Increased max_tokens
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       
+      // Wrap JSON parsing in try-catch to handle malformed responses gracefully
       let syntheticPairs: any[];
       try {
         syntheticPairs = this.parseJsonResponse(response);
@@ -629,7 +720,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
     }
   }
 
-  // Generate synthetic Q&A pairs by processing each gap individually
+  // UPDATED: Generate synthetic Q&A pairs by processing each gap individually
   public async generateSyntheticQAPairs(
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
@@ -651,7 +742,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
     }
 
     // Calculate pairs per gap, ensuring we don't exceed reasonable limits
-    const pairsPerGap = Math.min(15, Math.ceil(targetCount / knowledgeGaps.length));
+    const pairsPerGap = Math.min(15, Math.ceil(targetCount / knowledgeGaps.length)); // Cap at 15 per gap
     const actualTargetCount = pairsPerGap * knowledgeGaps.length;
     
     console.log(`[OPENROUTER] Generating ${pairsPerGap} pairs per gap for ${knowledgeGaps.length} gaps (${actualTargetCount} total)`);
@@ -683,12 +774,13 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
 
         // Add a small delay between requests to avoid rate limiting
         if (i < knowledgeGaps.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
+          await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
         }
 
       } catch (error: any) {
         console.error(`[OPENROUTER] Failed to generate pairs for gap ${gap.id}:`, error);
         failedGaps.push(gap.id);
+        // Continue with other gaps instead of failing completely
       }
     }
 
@@ -714,6 +806,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       throw new Error('No synthetic Q&A pairs could be generated for any knowledge gaps');
     }
 
+    // Shuffle the final array to mix pairs from different gaps
     return this.shuffleArray(allSyntheticPairs);
   }
 

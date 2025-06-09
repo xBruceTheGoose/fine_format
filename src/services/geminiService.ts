@@ -1,7 +1,9 @@
+import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
 import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair, KnowledgeGap } from '../types';
 import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
 
 class GeminiService {
+  private ai: GoogleGenAI | null = null;
   private isInitialized = false;
 
   constructor() {
@@ -9,50 +11,27 @@ class GeminiService {
   }
 
   private initialize(): void {
-    // For Netlify functions, we don't need client-side API keys
-    this.isInitialized = true;
-    console.log('[GEMINI] ✅ Service initialized for Netlify functions');
+    // Try both possible API key names for backward compatibility
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+    
+    if (!apiKey?.trim()) {
+      console.error('[GEMINI] API key not found in environment variables');
+      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY in .env.local file');
+      return;
+    }
+
+    try {
+      this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+      this.isInitialized = true;
+      console.log('[GEMINI] ✅ Service initialized successfully');
+    } catch (error) {
+      console.error('[GEMINI] Failed to initialize GoogleGenAI:', error);
+      this.isInitialized = false;
+    }
   }
 
   public isReady(): boolean {
-    return this.isInitialized;
-  }
-
-  private async makeRequest(
-    messages: Array<{ role: string; content?: string; parts?: any[] }>,
-    config?: any,
-    tools?: any
-  ): Promise<any> {
-    console.log('[GEMINI] Making request to Netlify function');
-
-    try {
-      const response = await fetch('/.netlify/functions/gemini-chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          messages,
-          config,
-          tools,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return {
-        text: () => data.content,
-        candidates: data.candidates,
-        usageMetadata: data.usage,
-      };
-    } catch (error: any) {
-      console.error('[GEMINI] Request failed:', error);
-      throw error;
-    }
+    return this.isInitialized && this.ai !== null;
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -228,6 +207,10 @@ QUALITY STANDARDS:
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
@@ -271,16 +254,21 @@ ${combinedContent.substring(0, 18000)}${combinedContent.length > 18000 ? '\n[Con
 Generate the theme array now:`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 1200,
-        temperature: 0.3,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 1200, // Increased for more detailed theme analysis
+          temperature: 0.3, // Lower temperature for consistent theme identification
+        },
       });
 
-      const themes = this.parseJsonResponse(response.text());
+      const themes = this.parseJsonResponse(response.text);
 
       if (!Array.isArray(themes)) {
         throw new Error('Response is not a valid JSON array');
@@ -292,9 +280,10 @@ Generate the theme array now:`;
       );
 
       console.log('[GEMINI] Identified themes:', validThemes);
-      return validThemes.slice(0, 8);
+      return validThemes.slice(0, 8); // Limit to 8 themes max
     } catch (error: any) {
       console.error('[GEMINI] Theme identification failed:', error);
+      // Return empty array if theme identification fails - web search will still work
       return [];
     }
   }
@@ -316,6 +305,10 @@ Generate the theme array now:`;
     textContent: string,
     fileName: string
   ): Promise<string> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const systemPrompt = `You are an expert content processor specializing in text cleaning and optimization for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -354,15 +347,20 @@ ${textContent}
 ---`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        maxOutputTokens: 10000,
-        temperature: 0.1,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: 'I understand. I will clean and optimize the text content while preserving all valuable information.' }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          maxOutputTokens: 10000, // Increased to handle larger content without truncation
+          temperature: 0.1, // Very low temperature for consistent cleaning
+        },
       });
 
-      return response.text()?.trim() || '';
+      return response.text?.trim() || '';
     } catch (error: any) {
       throw new Error(`Text cleaning failed: ${error.message || 'Unknown error'}`);
     }
@@ -373,6 +371,10 @@ ${textContent}
     mimeType: string,
     fileName: string
   ): Promise<string> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const systemPrompt = `You are an expert document processor specializing in extracting and optimizing text content from binary files for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -383,7 +385,16 @@ EXPERTISE:
 
 OBJECTIVE: Extract all valuable textual content from the binary file and optimize it for fine-tuning dataset generation.`;
 
-    const userPrompt = `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
+    const userParts: Part[] = [
+      { text: systemPrompt },
+      {
+        inlineData: {
+          mimeType,
+          data: base64Data,
+        },
+      },
+      {
+        text: `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
 
 EXTRACTION REQUIREMENTS:
 1. Extract all relevant textual content comprehensively
@@ -403,29 +414,21 @@ CONTENT PRIORITIES:
 - Technical specifications and data
 - Procedural instructions and guidelines
 
-Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`;
+Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`,
+      },
+    ];
 
     try {
-      const response = await this.makeRequest([
-        { 
-          role: 'user', 
-          parts: [
-            { text: systemPrompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-            { text: userPrompt }
-          ]
-        }
-      ], {
-        maxOutputTokens: 10000,
-        temperature: 0.1,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [{ role: 'user', parts: userParts }],
+        config: {
+          maxOutputTokens: 10000, // Increased to handle larger extracted content
+          temperature: 0.1, // Very low temperature for consistent extraction
+        },
       });
 
-      return response.text()?.trim() || '';
+      return response.text?.trim() || '';
     } catch (error: any) {
       throw new Error(`Binary content cleaning failed: ${error.message || 'Unknown error'}`);
     }
@@ -436,6 +439,10 @@ Return only the extracted, optimized text content without commentary. If no mean
     identifiedThemes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = identifiedThemes.length > 0 
       ? `\n\nPRIORITY THEMES FOR WEB SEARCH: ${identifiedThemes.join(', ')}`
@@ -493,15 +500,21 @@ ${originalContent}
 ---`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        maxOutputTokens: 12000,
-        temperature: 0.4,
-      }, [{ googleSearch: {} }]);
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          tools: [{ googleSearch: {} }],
+          maxOutputTokens: 12000, // Increased for comprehensive augmentation
+          temperature: 0.4, // Balanced temperature for creative integration
+        },
+      });
 
-      const augmentedText = response.text()?.trim() || originalContent;
+      const augmentedText = response.text?.trim() || originalContent;
       const groundingMetadata = response.candidates?.[0]?.groundingMetadata as GroundingMetadata;
 
       console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
@@ -556,6 +569,10 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     if (content.length < 200) {
       throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
     }
@@ -639,16 +656,21 @@ ${content}
 Generate exactly ${QA_PAIR_COUNT_TARGET} Q&A pairs now:`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 12000,
-        temperature: 0.6,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: `I understand. I will generate exactly ${QA_PAIR_COUNT_TARGET} high-quality Q&A pairs optimized for ${goalConfig?.name} fine-tuning, including strategic incorrect answers for discrimination training.` }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 12000, // Increased to handle 100 Q&A pairs without truncation
+          temperature: 0.6, // Balanced temperature for diverse question generation
+        },
       });
 
-      const qaData = this.parseJsonResponse(response.text());
+      const qaData = this.parseJsonResponse(response.text);
 
       if (!Array.isArray(qaData)) {
         throw new Error('Response is not a valid JSON array');
@@ -668,6 +690,7 @@ Generate exactly ${QA_PAIR_COUNT_TARGET} Q&A pairs now:`;
         source: 'original' as const
       }));
 
+      // Shuffle the array to randomize correct/incorrect order
       const shuffledPairs = this.shuffleArray(validPairs);
 
       console.log('[GEMINI] Generated Q&A pairs:', {
@@ -682,12 +705,17 @@ Generate exactly ${QA_PAIR_COUNT_TARGET} Q&A pairs now:`;
     }
   }
 
+  // UPDATED: Analyze generated Q&A dataset to identify knowledge gaps with enhanced prompting
   public async identifyKnowledgeGaps(
     originalContent: string,
     identifiedThemes: string[],
     generatedQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const existingQuestions = generatedQAPairs.map(pair => pair.user);
     const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
@@ -760,16 +788,21 @@ Return a JSON array of knowledge gap objects:
 ]`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 5000,
-        temperature: 0.3,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 5000, // Increased for comprehensive gap analysis
+          temperature: 0.3, // Lower temperature for consistent analysis
+        },
       });
 
-      const gaps = this.parseJsonResponse(response.text());
+      const gaps = this.parseJsonResponse(response.text);
 
       if (!Array.isArray(gaps)) {
         throw new Error('Response is not a valid JSON array');
@@ -783,7 +816,7 @@ Return a JSON array of knowledge gap objects:
         ['high', 'medium', 'low'].includes(gap.priority) &&
         Array.isArray(gap.suggestedQuestionTypes) &&
         Array.isArray(gap.relatedConcepts)
-      ).slice(0, 8);
+      ).slice(0, 8); // Limit to 8 gaps max
 
       console.log('[GEMINI] Identified knowledge gaps:', {
         total: validGaps.length,
@@ -805,6 +838,10 @@ Return a JSON array of knowledge gap objects:
     referenceContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<ValidationResult> {
+    if (!this.ai) {
+      throw new Error('Gemini service not initialized');
+    }
+
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
     const systemPrompt = `You are an expert fact-checker and Q&A validator specializing in fine-tuning dataset quality assurance.
@@ -861,17 +898,23 @@ Provide validation assessment as JSON:
 }`;
 
     try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], {
-        responseMimeType: 'application/json',
-        maxOutputTokens: 2000,
-        temperature: 0.2,
+      const response: GenerateContentResponse = await this.ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: [
+          { role: 'user', parts: [{ text: systemPrompt }] },
+          { role: 'model', parts: [{ text: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' }] },
+          { role: 'user', parts: [{ text: userPrompt }] }
+        ],
+        config: {
+          responseMimeType: 'application/json',
+          maxOutputTokens: 2000, // Sufficient for detailed validation response
+          temperature: 0.2, // Very low temperature for consistent validation
+        },
       });
 
-      const validation = this.parseJsonResponse(response.text());
+      const validation = this.parseJsonResponse(response.text);
 
+      // Validate the response structure
       if (typeof validation.isValid !== 'boolean' ||
           typeof validation.confidence !== 'number' ||
           typeof validation.reasoning !== 'string' ||
@@ -891,6 +934,7 @@ Provide validation assessment as JSON:
 
     } catch (error: any) {
       console.error('[GEMINI] Q&A validation failed:', error);
+      // Return a conservative validation result on error
       return {
         isValid: false,
         confidence: 0.1,
