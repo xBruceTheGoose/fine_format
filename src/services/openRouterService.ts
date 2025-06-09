@@ -58,13 +58,13 @@ class OpenRouterService {
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
     maxTokens = 3000, // Reduced default for individual gap requests
-    model = 'meta-llama/llama-3.1-70b-instruct:free' // Use larger model for better JSON
+    model = 'nvidia/nemotron-4-340b-instruct' // Updated to use Nvidia Nemotron model
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('OpenRouter service not initialized - API key missing');
     }
 
-    console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens);
+    console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens, 'model:', model);
 
     // Create AbortController for timeout
     const controller = new AbortController();
@@ -394,12 +394,12 @@ ${combinedContent.substring(0, 3000)}${combinedContent.length > 3000 ? '...' : '
 Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowledgeGap.description}" gap:`;
 
     try {
-      console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id}`);
+      console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
       // Use smaller token limit for individual gap requests
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
-      ], 0.6, 2500); // Smaller token limit for focused requests
+      ], 0.6, 2500, 'nvidia/nemotron-4-340b-instruct'); // Explicitly specify Nemotron model
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       const syntheticPairs = this.parseJsonResponse(response);
