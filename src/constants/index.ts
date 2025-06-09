@@ -5,6 +5,11 @@ export const QA_PAIR_COUNT_TARGET = 100; // Target 100 Q&A pairs from original c
 export const SYNTHETIC_QA_TARGET = 75; // Target 50-100 additional synthetic pairs
 export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
 
+// Batch processing settings to avoid token limits
+export const QA_GENERATION_BATCH_SIZE = 25; // Generate 25 pairs per batch
+export const MAX_CONTENT_LENGTH_PER_BATCH = 8000; // Max content length per batch
+export const MAX_OUTPUT_TOKENS_PER_BATCH = 8000; // Max output tokens per batch
+
 export const SUPPORTED_TEXT_MIME_TYPES: TextMimeType[] = [
   'text/plain',
   'text/markdown',
