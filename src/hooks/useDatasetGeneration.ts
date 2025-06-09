@@ -3,23 +3,22 @@ import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap,
 import { geminiService } from '../services/geminiService';
 import { SYNTHETIC_QA_TARGET } from '../constants';
 
-// Conditional import for OpenRouter service
-let openRouterService: any = null;
-try {
-  const openRouterModule = await import('../services/openRouterService');
-  openRouterService = openRouterModule.openRouterService;
-} catch (error) {
-  console.warn('OpenRouter service not available:', error);
-}
+// Create promises for conditional imports without top-level await
+const openRouterServicePromise = import('../services/openRouterService').then(module => {
+  console.log('[HOOK] OpenRouter service loaded successfully');
+  return module.openRouterService;
+}).catch(error => {
+  console.warn('[HOOK] OpenRouter service not available:', error);
+  return null;
+});
 
-// Conditional import for notification service
-let notificationService: any = null;
-try {
-  const notificationModule = await import('../services/notificationService');
-  notificationService = notificationModule.notificationService;
-} catch (error) {
-  console.warn('Notification service not available:', error);
-}
+const notificationServicePromise = import('../services/notificationService').then(module => {
+  console.log('[HOOK] Notification service loaded successfully');
+  return module.notificationService;
+}).catch(error => {
+  console.warn('[HOOK] Notification service not available:', error);
+  return null;
+});
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -64,7 +63,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       totalTime += webAugmentationTime;
     }
     
-    if (enableGapFilling && openRouterService?.isReady()) {
+    if (enableGapFilling) {
       totalTime += gapAnalysisTime;
       totalTime += validationContextTime; // Add time for validation context generation
       totalTime += gapCount * syntheticGenerationTimePerGap; // Individual gap processing
@@ -110,6 +109,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     enableGapFilling: boolean = true
   ) => {
     console.log('[DATASET_GENERATION] Starting dataset generation process');
+    
+    // Await the service promises to get the actual service instances
+    const openRouterService = await openRouterServicePromise;
+    const notificationService = await notificationServicePromise;
+    
     console.log('[DATASET_GENERATION] Parameters:', {
       fileCount: files.length,
       urlCount: urls.length,
