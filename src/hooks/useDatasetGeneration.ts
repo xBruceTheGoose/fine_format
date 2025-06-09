@@ -54,6 +54,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     const qaGenerationTime = 45; // 45 seconds for Q&A generation
     const webAugmentationTime = 60; // 60 seconds for web search and augmentation
     const gapAnalysisTime = 30; // 30 seconds for gap analysis
+    const validationContextTime = 20; // 20 seconds for validation context generation
     const syntheticGenerationTimePerGap = 15; // 15 seconds per gap (individual requests)
     const validationTimePerPair = 3; // 3 seconds per validation (faster individual validation)
 
@@ -65,6 +66,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     
     if (enableGapFilling && openRouterService?.isReady()) {
       totalTime += gapAnalysisTime;
+      totalTime += validationContextTime; // Add time for validation context generation
       totalTime += gapCount * syntheticGenerationTimePerGap; // Individual gap processing
       totalTime += (gapCount * 10) * validationTimePerPair; // Estimate 10 pairs per gap for validation
     }
@@ -163,7 +165,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Calculate total steps based on enabled features
       let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
-      if (enableGapFilling && openRouterService?.isReady()) totalSteps += 3; // +3 for gap analysis, synthetic generation, validation
+      if (enableGapFilling && openRouterService?.isReady()) totalSteps += 4; // +4 for gap analysis, validation context, synthetic generation, validation
       
       console.log('[DATASET_GENERATION] Total steps calculated:', totalSteps);
       
@@ -302,7 +304,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Step 5-7: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
+      // Step 5-8: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
       if (enableGapFilling && openRouterService?.isReady()) {
         console.log('[DATASET_GENERATION] Knowledge gap filling enabled and OpenRouter ready');
         try {
@@ -368,26 +370,51 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             syntheticPairCount = allSyntheticPairs.length;
             console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${identifiedGaps.length} gaps`);
 
-            // Step 7: Cross-validate synthetic pairs using OpenRouter Nemotron (individual validation)
+            // Step 7: Generate validation context for efficient validation
+            let validationContext = '';
             if (allSyntheticPairs.length > 0) {
               currentStepIndex++;
-              console.log('[DATASET_GENERATION] Starting individual cross-validation of synthetic pairs using Nemotron');
-              updateProgress(currentStepIndex, totalSteps, `Cross-validating ${allSyntheticPairs.length} synthetic Q&A pairs using Nemotron...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
+              console.log('[DATASET_GENERATION] Generating validation context for synthetic pairs');
+              updateProgress(currentStepIndex, totalSteps, 'Generating validation context for efficient Q&A validation...', totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
+              
+              try {
+                validationContext = await openRouterService.generateValidationContext(
+                  combinedContent,
+                  identifiedThemes,
+                  initialQAPairs,
+                  identifiedGaps,
+                  allSyntheticPairs,
+                  fineTuningGoal
+                );
+                console.log(`[DATASET_GENERATION] Validation context generated, length: ${validationContext.length} characters`);
+              } catch (contextError: any) {
+                console.error('[DATASET_GENERATION] Failed to generate validation context:', contextError);
+                // Fallback to using original content for validation
+                validationContext = combinedContent.substring(0, 4000);
+                console.log('[DATASET_GENERATION] Using fallback validation context from original content');
+              }
+            }
+
+            // Step 8: Cross-validate synthetic pairs using the validation context
+            if (allSyntheticPairs.length > 0 && validationContext) {
+              currentStepIndex++;
+              console.log('[DATASET_GENERATION] Starting context-based validation of synthetic pairs');
+              updateProgress(currentStepIndex, totalSteps, `Validating ${allSyntheticPairs.length} synthetic Q&A pairs using generated context...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
               
               const validatedPairs: QAPair[] = [];
               const validationThreshold = 0.7; // Minimum confidence for inclusion
 
               for (let i = 0; i < allSyntheticPairs.length; i++) {
-                console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length} using Nemotron`);
+                console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length} using validation context`);
                 try {
-                  // Use OpenRouter Nemotron for validation instead of Gemini to avoid rate limits
+                  // Use the validation context instead of full original content
                   const validation = await openRouterService.validateQAPair(
                     allSyntheticPairs[i],
-                    combinedContent,
+                    validationContext,
                     fineTuningGoal
                   );
 
-                  console.log(`[DATASET_GENERATION] Nemotron validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
+                  console.log(`[DATASET_GENERATION] Context-based validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
 
                   // Update the synthetic pair with validation results
                   const validatedPair: QAPair = {
@@ -413,7 +440,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                     updateProgress(
                       currentStepIndex, 
                       totalSteps, 
-                      `Cross-validating synthetic Q&A pairs using Nemotron... (${i + 1}/${allSyntheticPairs.length}, ${validatedPairCount} validated)`,
+                      `Validating synthetic Q&A pairs using context... (${i + 1}/${allSyntheticPairs.length}, ${validatedPairCount} validated)`,
                       totalSources,
                       enableWebAugmentation,
                       enableGapFilling,
@@ -427,7 +454,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   }
 
                 } catch (validationError) {
-                  console.error(`[DATASET_GENERATION] Nemotron validation failed for synthetic pair ${i}:`, validationError);
+                  console.error(`[DATASET_GENERATION] Context-based validation failed for synthetic pair ${i}:`, validationError);
                   // Continue with other pairs
                 }
               }

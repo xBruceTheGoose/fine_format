@@ -365,17 +365,86 @@ class OpenRouterService {
     return [];
   }
 
-  // NEW: Validate Q&A pair using Nemotron model
+  // NEW: Generate validation context/basis for synthetic Q&A pairs
+  public async generateValidationContext(
+    combinedContent: string,
+    identifiedThemes: string[],
+    initialQAPairs: QAPair[],
+    identifiedGaps: KnowledgeGap[],
+    allSyntheticPairs: SyntheticQAPair[],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<string> {
+    console.log('[OPENROUTER] Generating validation context for synthetic Q&A pairs');
+    
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+    
+    const prompt = `You are an expert dataset analyst. Create a comprehensive validation context that will be used to validate synthetic Q&A pairs.
+
+TASK: Analyze the provided information and create a concise validation reference that captures:
+1. Key factual information and domain knowledge
+2. Important themes and concepts
+3. Quality standards based on the initial dataset
+4. Specific criteria for the identified knowledge gaps
+5. Fine-tuning goal requirements
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}
+
+ORIGINAL CONTENT THEMES: ${identifiedThemes.join(', ')}
+
+INITIAL DATASET ANALYSIS:
+- Total Q&A pairs: ${initialQAPairs.length}
+- Correct answers: ${initialQAPairs.filter(p => p.isCorrect).length}
+- Incorrect answers: ${initialQAPairs.filter(p => !p.isCorrect).length}
+
+KNOWLEDGE GAPS TO ADDRESS:
+${identifiedGaps.map(gap => `- ${gap.id}: ${gap.description} (Priority: ${gap.priority})`).join('\n')}
+
+SYNTHETIC PAIRS GENERATED:
+- Total synthetic pairs: ${allSyntheticPairs.length}
+- Targeting gaps: ${[...new Set(allSyntheticPairs.map(p => p.targetGap))].join(', ')}
+
+ORIGINAL CONTENT REFERENCE:
+---
+${combinedContent.substring(0, 6000)}${combinedContent.length > 6000 ? '...' : ''}
+---
+
+Create a validation context that includes:
+1. **Core Facts & Knowledge**: Essential factual information that synthetic pairs should align with
+2. **Quality Standards**: Based on the initial dataset, what constitutes a high-quality Q&A pair
+3. **Gap-Specific Criteria**: For each knowledge gap, what makes a synthetic pair valuable
+4. **Fine-tuning Alignment**: How pairs should support the ${goalConfig?.name} objective
+5. **Validation Guidelines**: Clear criteria for determining if a synthetic pair is valid and valuable
+
+Keep the validation context comprehensive but concise (under 2000 words). This will be used as the primary reference for validating each synthetic Q&A pair.`;
+
+    try {
+      console.log('[OPENROUTER] Sending validation context generation request');
+      
+      const response = await this.makeRequest([
+        { role: 'user', content: prompt }
+      ], 0.3, 3000); // Lower temperature for consistency, adequate tokens for comprehensive context
+
+      console.log('[OPENROUTER] Validation context generated successfully, length:', response.length);
+      return response.trim();
+
+    } catch (error: any) {
+      console.error('[OPENROUTER] Validation context generation failed:', error);
+      throw new Error(`Validation context generation failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  // UPDATED: Validate Q&A pair using the generated validation context
   public async validateQAPair(
     syntheticPair: SyntheticQAPair,
-    referenceContent: string,
+    validationContext: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<ValidationResult> {
-    console.log(`[OPENROUTER] Validating Q&A pair using Nemotron model`);
+    console.log(`[OPENROUTER] Validating Q&A pair using generated validation context`);
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
-    const prompt = `You are an expert fact-checker and Q&A validator. Validate this synthetic Q&A pair against the reference content.
+    const prompt = `You are an expert fact-checker and Q&A validator. Validate this synthetic Q&A pair against the provided validation context.
 
 TASK: Provide validation as a JSON object with specific fields.
 
@@ -388,17 +457,18 @@ Answer: ${syntheticPair.model}
 Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
 Target Gap: ${syntheticPair.targetGap}
 
+VALIDATION CONTEXT:
+---
+${validationContext}
+---
+
 VALIDATION CRITERIA:
-1. Factual Accuracy: Is the answer factually correct based on the reference content?
+1. Factual Accuracy: Is the answer factually correct based on the validation context?
 2. Relevance: Does the Q&A pair align with the ${goalConfig?.name} objective?
 3. Quality: Is the answer comprehensive and well-structured?
 4. Consistency: Does the claimed correctness match the actual accuracy?
-5. Fine-tuning Value: Will this Q&A pair improve model performance for ${goalConfig?.promptFocus}?
-
-REFERENCE CONTENT:
----
-${referenceContent.substring(0, 4000)}${referenceContent.length > 4000 ? '...' : ''}
----
+5. Gap Alignment: Does this pair effectively address the target knowledge gap?
+6. Fine-tuning Value: Will this Q&A pair improve model performance for ${goalConfig?.promptFocus}?
 
 Respond with ONLY a valid JSON object (no explanations, no markdown):
 {
@@ -411,7 +481,7 @@ Respond with ONLY a valid JSON object (no explanations, no markdown):
 }`;
 
     try {
-      console.log(`[OPENROUTER] Sending validation request using Nemotron`);
+      console.log(`[OPENROUTER] Sending validation request using validation context`);
       
       const response = await this.makeRequest([
         { role: 'user', content: prompt }
