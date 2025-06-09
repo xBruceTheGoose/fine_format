@@ -1,6 +1,5 @@
 [![Netlify Status](https://api.netlify.com/api/v1/badges/78b04c0f-be36-496a-a1c5-0365e707a4e5/deploy-status)](https://app.netlify.com/projects/fineformat/deploys)
-[![Gemini API Status](https://img.shields.io/badge/dynamic/json?url=https://generativelanguage.googleapis.com/v1beta/models?key=${VITE_GEMINI_API_KEY}&label=Gemini%20API&query=$.models[0].state&color=success)](https://ai.google.dev/status)
-[![OpenRouter API Status](https://img.shields.io/badge/dynamic/json?url=https://openrouter.ai/api/v1/status&label=OpenRouter%20API&query=$.status&color=success)](https://openrouter.ai/status)
+
 [![Datasets Generated](https://img.shields.io/endpoint?url=https://fineformat.netlify.app/.netlify/functions/dataset-stats&label=Datasets%20Generated&color=success&style=for-the-badge&logo=netlify&logoColor=white)](https://fineformat.netlify.app/stats)
 
 # Fine Format
