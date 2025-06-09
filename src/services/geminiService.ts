@@ -179,8 +179,7 @@ Question types should include:
     const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
-    const prompt = `
-Analyze the following content and identify 5-8 key themes optimized for ${goalConfig?.name} fine-tuning.
+    const prompt = `Analyze the following content and identify 5-8 key themes optimized for ${goalConfig?.name} fine-tuning.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
@@ -201,7 +200,7 @@ Example for ${goalConfig?.name}: ${this.getExampleThemes(fineTuningGoal)}
 
 Content to analyze:
 ---
-${combinedContent.substring(0, 12000)} ${combinedContent.length > 12000 ? '...' : ''}
+${combinedContent.substring(0, 15000)} ${combinedContent.length > 15000 ? '...' : ''}
 ---
 
 JSON Output:
@@ -213,6 +212,7 @@ JSON Output:
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: 'application/json',
+          maxOutputTokens: 1000, // Sufficient for theme list
         },
       });
 
@@ -256,8 +256,7 @@ JSON Output:
       throw new Error('Gemini service not initialized');
     }
 
-    const prompt = `
-Clean the following text content from "${fileName}":
+    const prompt = `Clean the following text content from "${fileName}":
 
 1. Remove advertisements, navigation elements, headers, footers
 2. Remove non-essential formatting and syntax
@@ -273,6 +272,9 @@ ${textContent}
       const response: GenerateContentResponse = await this.ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          maxOutputTokens: 8000, // Increased to handle larger content
+        },
       });
 
       return response.text?.trim() || '';
@@ -317,6 +319,9 @@ Do not add commentary or explanations.
       const response: GenerateContentResponse = await this.ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: userParts }],
+        config: {
+          maxOutputTokens: 8000, // Increased to handle larger extracted content
+        },
       });
 
       return response.text?.trim() || '';
@@ -341,8 +346,7 @@ Do not add commentary or explanations.
 
     const goalSpecificGuidance = this.getGoalSpecificWebSearchGuidance(fineTuningGoal);
 
-    const prompt = `
-You are a content augmentation expert optimizing for ${goalConfig?.name} fine-tuning. Your task:
+    const prompt = `You are a content augmentation expert optimizing for ${goalConfig?.name} fine-tuning. Your task:
 
 1. Analyze the core themes and topics in the provided text
 2. Use Google Search to find relevant, factual, up-to-date information${themeGuidance}
@@ -368,6 +372,7 @@ ${originalContent}
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           tools: [{ googleSearch: {} }],
+          maxOutputTokens: 8000, // Increased for comprehensive augmentation
         },
       });
 
@@ -434,8 +439,7 @@ STYLE FOCUS - When searching and augmenting:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    const prompt = `
-Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs optimized for ${goalConfig?.name} fine-tuning.
+    const prompt = `Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality question-answer pairs optimized for ${goalConfig?.name} fine-tuning.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
@@ -489,6 +493,7 @@ JSON Output:
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: 'application/json',
+          maxOutputTokens: 8000, // Increased to handle 100 Q&A pairs without truncation
         },
       });
 
@@ -521,7 +526,7 @@ JSON Output:
     }
   }
 
-  // NEW METHOD: Analyze generated Q&A dataset to identify knowledge gaps
+  // UPDATED: Analyze generated Q&A dataset to identify knowledge gaps with enhanced prompting
   public async identifyKnowledgeGaps(
     originalContent: string,
     identifiedThemes: string[],
@@ -536,8 +541,7 @@ JSON Output:
     const existingQuestions = generatedQAPairs.map(pair => pair.user);
     const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
 
-    const prompt = `
-You are an expert dataset analyst specializing in identifying knowledge gaps in Q&A datasets for ${goalConfig?.name} fine-tuning.
+    const prompt = `You are an expert dataset analyst specializing in identifying knowledge gaps in Q&A datasets for ${goalConfig?.name} fine-tuning.
 
 TASK: Analyze the generated Q&A dataset against the original content to identify significant knowledge gaps that should be filled with additional synthetic Q&A pairs.
 
@@ -585,7 +589,7 @@ Format as JSON array:
 
 ORIGINAL CONTENT FOR REFERENCE:
 ---
-${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '...' : ''}
+${originalContent.substring(0, 12000)}${originalContent.length > 12000 ? '...' : ''}
 ---
 
 JSON Output:
@@ -597,6 +601,7 @@ JSON Output:
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: 'application/json',
+          maxOutputTokens: 4000, // Increased for comprehensive gap analysis
         },
       });
 
@@ -633,8 +638,7 @@ JSON Output:
 
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
-    const prompt = `
-You are an expert fact-checker and Q&A validator for ${goalConfig?.name} fine-tuning datasets.
+    const prompt = `You are an expert fact-checker and Q&A validator for ${goalConfig?.name} fine-tuning datasets.
 
 TASK: Validate the accuracy and quality of this synthetic Q&A pair against the reference content.
 
@@ -656,7 +660,7 @@ VALIDATION CRITERIA:
 
 REFERENCE CONTENT:
 ---
-${referenceContent.substring(0, 8000)}${referenceContent.length > 8000 ? '...' : ''}
+${referenceContent.substring(0, 10000)}${referenceContent.length > 10000 ? '...' : ''}
 ---
 
 Provide your validation as JSON:
@@ -678,6 +682,7 @@ JSON Output:
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         config: {
           responseMimeType: 'application/json',
+          maxOutputTokens: 1500, // Sufficient for validation response
         },
       });
 

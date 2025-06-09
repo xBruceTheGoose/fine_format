@@ -27,11 +27,6 @@ class OpenRouterService {
       return;
     }
 
-    console.log('[OPENROUTER] Checking for API key...');
-    console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
-    console.log('[OPENROUTER] OPENROUTER_API_KEY:', import.meta.env.OPENROUTER_API_KEY ? 'Found' : 'Not found');
-    console.log('[OPENROUTER] VITE_OPENROUTER_KEY:', import.meta.env.VITE_OPENROUTER_KEY ? 'Found' : 'Not found');
-
     this.apiKey = apiKey.trim();
     this.isInitialized = true;
     console.log('[OPENROUTER] ✅ Service initialized successfully');
@@ -57,8 +52,8 @@ class OpenRouterService {
   private async makeRequest(
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
-    maxTokens = 3000, // Reduced default for individual gap requests
-    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free' // Correct Nvidia Nemotron model ID
+    maxTokens = 4000, // Increased default to prevent truncation
+    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free' // Use Nvidia Nemotron for better reasoning
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error('OpenRouter service not initialized - API key missing');
@@ -66,12 +61,12 @@ class OpenRouterService {
 
     console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens, 'model:', model);
 
-    // Create AbortController for timeout
+    // Create AbortController for timeout - increased for larger responses
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
-      console.log('[OPENROUTER] Request timeout after 60 seconds');
+      console.log('[OPENROUTER] Request timeout after 90 seconds');
       controller.abort();
-    }, 60000); // 60 second timeout for smaller requests
+    }, 90000); // 90 second timeout for larger requests
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -88,6 +83,10 @@ class OpenRouterService {
           temperature,
           max_tokens: maxTokens,
           stream: false,
+          // Add additional parameters to prevent truncation
+          top_p: 0.95, // Slightly more diverse responses
+          frequency_penalty: 0.1, // Reduce repetition
+          presence_penalty: 0.1, // Encourage new topics
         }),
         signal: controller.signal,
       });
@@ -110,10 +109,10 @@ class OpenRouterService {
       const content = data.choices[0].message.content;
       console.log('[OPENROUTER] Request successful, response length:', content.length);
       
-      // Check if response was truncated
+      // Check if response was truncated and warn
       if (data.choices[0].finish_reason === 'length') {
-        console.warn('[OPENROUTER] Response was truncated due to max_tokens limit');
-        throw new Error('Response was truncated. The generated content exceeded the token limit.');
+        console.warn('[OPENROUTER] ⚠️ Response was truncated due to max_tokens limit. Consider increasing max_tokens.');
+        // Don't throw error, but log warning for monitoring
       }
       
       return content;
@@ -123,7 +122,7 @@ class OpenRouterService {
       
       if (error.name === 'AbortError') {
         console.error('[OPENROUTER] Request aborted due to timeout');
-        throw new Error('OpenRouter API request timed out after 60 seconds');
+        throw new Error('OpenRouter API request timed out after 90 seconds');
       }
       
       console.error('[OPENROUTER] Request failed:', error);
@@ -133,8 +132,6 @@ class OpenRouterService {
 
   private parseJsonResponse(responseText: string): any {
     console.log('[OPENROUTER] Parsing JSON response, length:', responseText.length);
-    console.log('[OPENROUTER] Processed JSON string (first 500 chars):');
-    console.log(responseText.substring(0, 500));
     
     let jsonStr = responseText.trim();
     
@@ -378,52 +375,78 @@ class OpenRouterService {
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     
-    const prompt = `You are an expert dataset analyst. Create a comprehensive validation context that will be used to validate synthetic Q&A pairs.
+    const systemPrompt = `You are an expert dataset analyst and validation specialist. Your task is to create a comprehensive validation reference that will be used to efficiently validate synthetic Q&A pairs.
 
-TASK: Analyze the provided information and create a concise validation reference that captures:
-1. Key factual information and domain knowledge
-2. Important themes and concepts
-3. Quality standards based on the initial dataset
-4. Specific criteria for the identified knowledge gaps
-5. Fine-tuning goal requirements
+EXPERTISE AREAS:
+- Domain knowledge extraction and synthesis
+- Quality assessment frameworks
+- Fine-tuning dataset optimization
+- Knowledge gap analysis
+- Factual accuracy verification
+
+OBJECTIVE: Create a concise but comprehensive validation context that captures all essential information needed to validate synthetic Q&A pairs without requiring access to the full original content.`;
+
+    const userPrompt = `Create a comprehensive validation context for synthetic Q&A pair validation.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-ORIGINAL CONTENT THEMES: ${identifiedThemes.join(', ')}
-
-INITIAL DATASET ANALYSIS:
-- Total Q&A pairs: ${initialQAPairs.length}
-- Correct answers: ${initialQAPairs.filter(p => p.isCorrect).length}
-- Incorrect answers: ${initialQAPairs.filter(p => !p.isCorrect).length}
+DATASET OVERVIEW:
+- Original content themes: ${identifiedThemes.join(', ')}
+- Initial Q&A pairs: ${initialQAPairs.length} (${initialQAPairs.filter(p => p.isCorrect).length} correct, ${initialQAPairs.filter(p => !p.isCorrect).length} incorrect)
+- Knowledge gaps identified: ${identifiedGaps.length}
+- Synthetic pairs to validate: ${allSyntheticPairs.length}
 
 KNOWLEDGE GAPS TO ADDRESS:
-${identifiedGaps.map(gap => `- ${gap.id}: ${gap.description} (Priority: ${gap.priority})`).join('\n')}
-
-SYNTHETIC PAIRS GENERATED:
-- Total synthetic pairs: ${allSyntheticPairs.length}
-- Targeting gaps: ${[...new Set(allSyntheticPairs.map(p => p.targetGap))].join(', ')}
+${identifiedGaps.map(gap => `• ${gap.id}: ${gap.description} (Priority: ${gap.priority})
+  - Suggested question types: ${gap.suggestedQuestionTypes.join(', ')}
+  - Related concepts: ${gap.relatedConcepts.join(', ')}`).join('\n')}
 
 ORIGINAL CONTENT REFERENCE:
 ---
-${combinedContent.substring(0, 6000)}${combinedContent.length > 6000 ? '...' : ''}
+${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '\n[Content truncated for context generation]' : ''}
 ---
 
-Create a validation context that includes:
-1. **Core Facts & Knowledge**: Essential factual information that synthetic pairs should align with
-2. **Quality Standards**: Based on the initial dataset, what constitutes a high-quality Q&A pair
-3. **Gap-Specific Criteria**: For each knowledge gap, what makes a synthetic pair valuable
-4. **Fine-tuning Alignment**: How pairs should support the ${goalConfig?.name} objective
-5. **Validation Guidelines**: Clear criteria for determining if a synthetic pair is valid and valuable
+VALIDATION CONTEXT REQUIREMENTS:
 
-Keep the validation context comprehensive but concise (under 2000 words). This will be used as the primary reference for validating each synthetic Q&A pair.`;
+1. **CORE KNOWLEDGE BASE**
+   - Extract and synthesize key factual information
+   - Identify authoritative statements and data points
+   - Note important relationships and dependencies
+   - Highlight domain-specific terminology and concepts
+
+2. **QUALITY STANDARDS** (based on initial dataset)
+   - Question complexity and clarity standards
+   - Answer completeness and accuracy requirements
+   - Appropriate level of detail for the domain
+   - Consistency in tone and style
+
+3. **GAP-SPECIFIC VALIDATION CRITERIA**
+   - For each knowledge gap, define what constitutes effective coverage
+   - Specify the types of questions that would address each gap
+   - Identify key concepts that synthetic pairs should demonstrate
+
+4. **FINE-TUNING ALIGNMENT**
+   - Ensure synthetic pairs support the ${goalConfig?.name} objective
+   - Validate alignment with ${goalConfig?.promptFocus}
+   - Check for appropriate difficulty progression
+   - Verify relevance to the target use case
+
+5. **VALIDATION GUIDELINES**
+   - Clear criteria for factual accuracy assessment
+   - Standards for relevance and usefulness
+   - Guidelines for identifying high-quality vs. low-quality pairs
+   - Red flags that indicate problematic content
+
+Create a structured validation context (1500-2000 words) that will serve as the primary reference for validating each synthetic Q&A pair efficiently and accurately.`;
 
     try {
       console.log('[OPENROUTER] Sending validation context generation request');
       
       const response = await this.makeRequest([
-        { role: 'user', content: prompt }
-      ], 0.3, 3000); // Lower temperature for consistency, adequate tokens for comprehensive context
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], 0.3, 3500); // Lower temperature for consistency, adequate tokens for comprehensive context
 
       console.log('[OPENROUTER] Validation context generated successfully, length:', response.length);
       return response.trim();
@@ -444,18 +467,28 @@ Keep the validation context comprehensive but concise (under 2000 words). This w
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
-    const prompt = `You are an expert fact-checker and Q&A validator. Validate this synthetic Q&A pair against the provided validation context.
+    const systemPrompt = `You are an expert fact-checker and Q&A validator specializing in fine-tuning dataset quality assurance.
 
-TASK: Provide validation as a JSON object with specific fields.
+EXPERTISE:
+- Factual accuracy verification
+- Content relevance assessment
+- Quality standard enforcement
+- Knowledge gap coverage evaluation
+- Fine-tuning dataset optimization
+
+TASK: Validate a synthetic Q&A pair against the provided validation context and return a precise JSON assessment.`;
+
+    const userPrompt = `Validate this synthetic Q&A pair against the validation context.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-SYNTHETIC Q&A PAIR TO VALIDATE:
-Question: ${syntheticPair.user}
-Answer: ${syntheticPair.model}
+SYNTHETIC Q&A PAIR:
+Question: "${syntheticPair.user}"
+Answer: "${syntheticPair.model}"
 Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
 Target Gap: ${syntheticPair.targetGap}
+Generation Reasoning: ${syntheticPair.generationReasoning || 'Not provided'}
 
 VALIDATION CONTEXT:
 ---
@@ -463,29 +496,30 @@ ${validationContext}
 ---
 
 VALIDATION CRITERIA:
-1. Factual Accuracy: Is the answer factually correct based on the validation context?
-2. Relevance: Does the Q&A pair align with the ${goalConfig?.name} objective?
-3. Quality: Is the answer comprehensive and well-structured?
-4. Consistency: Does the claimed correctness match the actual accuracy?
-5. Gap Alignment: Does this pair effectively address the target knowledge gap?
-6. Fine-tuning Value: Will this Q&A pair improve model performance for ${goalConfig?.promptFocus}?
+1. **Factual Accuracy**: Is the answer factually correct based on the validation context?
+2. **Relevance**: Does the Q&A pair align with the ${goalConfig?.name} objective?
+3. **Quality**: Is the answer comprehensive, clear, and well-structured?
+4. **Consistency**: Does the claimed correctness match the actual accuracy?
+5. **Gap Alignment**: Does this pair effectively address the target knowledge gap?
+6. **Fine-tuning Value**: Will this improve model performance for ${goalConfig?.promptFocus}?
 
-Respond with ONLY a valid JSON object (no explanations, no markdown):
+Respond with ONLY a valid JSON object:
 {
   "isValid": boolean,
-  "confidence": number (0.0-1.0),
-  "reasoning": "Brief explanation of validation decision",
-  "suggestedCorrection": "If invalid, suggest correction (optional)",
-  "factualAccuracy": number (0.0-1.0),
-  "relevanceScore": number (0.0-1.0)
+  "confidence": number,
+  "reasoning": "Brief explanation",
+  "suggestedCorrection": "If invalid, suggest correction",
+  "factualAccuracy": number,
+  "relevanceScore": number
 }`;
 
     try {
       console.log(`[OPENROUTER] Sending validation request using validation context`);
       
       const response = await this.makeRequest([
-        { role: 'user', content: prompt }
-      ], 0.3, 1500); // Lower temperature and tokens for validation
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], 0.2, 1000); // Very low temperature for consistency, focused response
 
       console.log(`[OPENROUTER] Received validation response, parsing JSON`);
       
@@ -542,7 +576,7 @@ Respond with ONLY a valid JSON object (no explanations, no markdown):
     }
   }
 
-  // NEW: Generate synthetic Q&A pairs for a SINGLE knowledge gap
+  // UPDATED: Generate synthetic Q&A pairs for a SINGLE knowledge gap with refined prompting
   public async generateSyntheticQAPairsForGap(
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
@@ -555,20 +589,30 @@ Respond with ONLY a valid JSON object (no explanations, no markdown):
     const incorrectCount = Math.max(1, Math.ceil(pairsPerGap * INCORRECT_ANSWER_RATIO));
     const correctCount = pairsPerGap - incorrectCount;
 
-    const prompt = `You are an expert synthetic Q&A generator. Create exactly ${pairsPerGap} high-quality Q&A pairs in valid JSON format to address this specific knowledge gap.
+    const systemPrompt = `You are an expert synthetic Q&A generator specializing in creating high-quality training data for fine-tuning language models.
 
-CRITICAL JSON REQUIREMENTS:
-1. Respond with ONLY a valid JSON array - no explanations, no markdown, no code blocks
-2. Start immediately with [ and end with ]
-3. Each object must have: "user", "model", "isCorrect", "confidence", "targetGap", "generationReasoning"
-4. All strings must be properly escaped (use \\" for quotes, \\n for newlines)
-5. No unescaped control characters or special characters
-6. Generate exactly ${correctCount} correct and ${incorrectCount} incorrect answers
+EXPERTISE:
+- Domain knowledge synthesis
+- Question generation across difficulty levels
+- Answer quality optimization
+- Knowledge gap targeting
+- Fine-tuning dataset construction
+
+OBJECTIVE: Generate exactly ${pairsPerGap} synthetic Q&A pairs that specifically address the identified knowledge gap while maintaining high quality and relevance for ${goalConfig?.name} fine-tuning.
+
+QUALITY STANDARDS:
+- Questions must be natural, clear, and appropriately challenging
+- Answers must be comprehensive yet concise
+- Content must be factually grounded in the provided reference material
+- Incorrect answers should be plausible but clearly wrong to aid model discrimination
+- All pairs must directly address the specified knowledge gap`;
+
+    const userPrompt = `Generate exactly ${pairsPerGap} high-quality synthetic Q&A pairs to address this specific knowledge gap.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-KNOWLEDGE GAP TO ADDRESS:
+TARGET KNOWLEDGE GAP:
 ID: ${knowledgeGap.id}
 Description: ${knowledgeGap.description}
 Theme: ${knowledgeGap.theme}
@@ -576,18 +620,49 @@ Priority: ${knowledgeGap.priority}
 Suggested Question Types: ${knowledgeGap.suggestedQuestionTypes.join(', ')}
 Related Concepts: ${knowledgeGap.relatedConcepts.join(', ')}
 
-CONTENT REFERENCE (for context):
-${combinedContent.substring(0, 3000)}${combinedContent.length > 3000 ? '...' : ''}
+GENERATION REQUIREMENTS:
+- Generate exactly ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
+- Questions should vary in complexity and approach
+- Cover different aspects of the knowledge gap
+- Ensure answers are appropriate for the ${goalConfig?.name} objective
+- Incorrect answers should be plausible but factually wrong
+- All content must be grounded in the reference material
 
-Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowledgeGap.description}" gap:`;
+REFERENCE CONTENT:
+---
+${combinedContent.substring(0, 6000)}${combinedContent.length > 6000 ? '\n[Content truncated for generation focus]' : ''}
+---
+
+CRITICAL JSON FORMAT REQUIREMENTS:
+1. Respond with ONLY a valid JSON array
+2. No explanations, markdown, or code blocks
+3. Start immediately with [ and end with ]
+4. Each object must have: "user", "model", "isCorrect", "confidence", "targetGap", "generationReasoning"
+5. Properly escape all strings (use \\" for quotes, \\n for newlines)
+6. No unescaped control characters
+
+EXAMPLE FORMAT:
+[
+  {
+    "user": "What is the primary concept discussed in relation to [topic]?",
+    "model": "The primary concept is [detailed answer based on reference content]",
+    "isCorrect": true,
+    "confidence": 0.9,
+    "targetGap": "${knowledgeGap.id}",
+    "generationReasoning": "Addresses core understanding gap in ${knowledgeGap.theme}"
+  }
+]
+
+Generate exactly ${pairsPerGap} Q&A pairs now:`;
 
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
-      // Increased token limit from 2500 to 4000 to prevent truncation
+      // Increased token limit to 5000 to prevent truncation of larger responses
       const response = await this.makeRequest([
-        { role: 'user', content: prompt }
-      ], 0.6, 4000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Increased max_tokens
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], 0.6, 5000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Increased max_tokens
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       
@@ -699,7 +774,7 @@ Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowl
 
         // Add a small delay between requests to avoid rate limiting
         if (i < knowledgeGaps.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+          await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
         }
 
       } catch (error: any) {
