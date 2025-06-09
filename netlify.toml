@@ -4,8 +4,7 @@
 
 [functions]
   directory = "netlify/functions"
-  # Increase timeout for long-running AI operations
-  timeout = 60
+
 
 [[redirects]]
   from = "/api/*"
