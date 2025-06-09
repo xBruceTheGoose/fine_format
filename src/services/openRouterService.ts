@@ -204,13 +204,24 @@ class OpenRouterService {
       }
     } catch (stage1Error) {
       console.warn('[OPENROUTER] Stage 1 parsing failed:', stage1Error.message);
-      console.error('[OPENROUTER] JSON parsing failed around position');
-      console.error(stage1Error.message.match(/position (\d+)/)?.[1] || 'unknown');
-      console.error('[OPENROUTER] character:');
-      const position = parseInt(stage1Error.message.match(/position (\d+)/)?.[1] || '0');
-      console.error(jsonStr.charAt(position));
-      console.error('[OPENROUTER] Context:');
-      console.error(jsonStr.substring(Math.max(0, position - 50), position + 50));
+      
+      // Safe error logging to prevent crashes during debugging
+      try {
+        const positionMatch = stage1Error.message.match(/position (\d+)/);
+        if (positionMatch) {
+          const position = parseInt(positionMatch[1], 10);
+          console.error('[OPENROUTER] JSON parsing failed around position', position);
+          
+          if (position >= 0 && position < jsonStr.length) {
+            console.error('[OPENROUTER] character:', jsonStr.charAt(position));
+            const start = Math.max(0, position - 50);
+            const end = Math.min(jsonStr.length, position + 50);
+            console.error('[OPENROUTER] Context:', jsonStr.substring(start, end));
+          }
+        }
+      } catch (loggingError) {
+        console.warn('[OPENROUTER] Error during debug logging:', loggingError.message);
+      }
     }
 
     // Stage 2: Fix structural issues
@@ -509,11 +520,20 @@ Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowl
       ], 0.6, 2500, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Correct Nemotron model ID
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
-      const syntheticPairs = this.parseJsonResponse(response);
+      
+      // Wrap JSON parsing in try-catch to handle malformed responses gracefully
+      let syntheticPairs: any[];
+      try {
+        syntheticPairs = this.parseJsonResponse(response);
+      } catch (parseError) {
+        console.error(`[OPENROUTER] Failed to parse JSON response for gap ${knowledgeGap.id}:`, parseError.message);
+        console.warn(`[OPENROUTER] Returning empty array for gap ${knowledgeGap.id} due to parsing failure`);
+        return [];
+      }
 
       if (!Array.isArray(syntheticPairs)) {
         console.error(`[OPENROUTER] Response for gap ${knowledgeGap.id} is not a valid JSON array`);
-        throw new Error('Response is not a valid JSON array');
+        return [];
       }
 
       console.log(`[OPENROUTER] Filtering and validating synthetic pairs for gap ${knowledgeGap.id}`);
@@ -542,14 +562,16 @@ Generate exactly ${pairsPerGap} Q&A pairs that specifically address the "${knowl
       });
 
       if (validPairs.length === 0) {
-        throw new Error(`No valid Q&A pairs could be extracted for gap ${knowledgeGap.id}`);
+        console.warn(`[OPENROUTER] No valid Q&A pairs could be extracted for gap ${knowledgeGap.id}`);
+        return [];
       }
 
       return validPairs;
 
     } catch (error: any) {
       console.error(`[OPENROUTER] Synthetic Q&A generation failed for gap ${knowledgeGap.id}:`, error);
-      throw new Error(`Gap ${knowledgeGap.id} generation failed: ${error.message || 'Unknown error'}`);
+      console.warn(`[OPENROUTER] Returning empty array for gap ${knowledgeGap.id} due to generation failure`);
+      return [];
     }
   }
 
