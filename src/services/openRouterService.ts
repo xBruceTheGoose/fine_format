@@ -696,7 +696,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
         validationStatus: 'pending' as const,
         targetGap: knowledgeGap.id,
         generationReasoning: pair.generationReasoning || `Generated to address ${knowledgeGap.description}`
-      })).slice(0, pairsPerGap);
+      })); // Only enforce a minimum, not a cap: keep all pairs if more are generated
 
       console.log(`[OPENROUTER] Gap ${knowledgeGap.id} generation completed:`, {
         requested: pairsPerGap,
