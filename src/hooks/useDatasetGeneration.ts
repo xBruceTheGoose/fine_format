@@ -10,7 +10,9 @@ const playCompletionSound = () => {
     // or if the feature is disabled. This warning is for developers.
   });
 };
+
 import { SYNTHETIC_QA_TARGET_MIN } from '../constants';
+
 import { metricsService } from '../services/metricsService';
 
 // Create promises for conditional imports without top-level await
