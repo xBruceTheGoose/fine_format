@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
 import { SYNTHETIC_QA_TARGET_MIN, SYNTHETIC_QA_TARGET_MAX } from '../constants';
+import { metricsService } from '../services/metricsService';
 
 // Create promises for conditional imports without top-level await
 const openRouterServicePromise = import('../services/openRouterService').then(module => {
@@ -517,8 +518,22 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         gapFillingEnabled: enableGapFilling && openRouterService?.isReady()
       });
 
+      // Update dataset metrics
+      try {
+        const elapsedTime = (Date.now() - (startTime || Date.now())) / 1000;
+        const successRate = correctAnswers.length / finalQAPairs.length;
+        
+        await metricsService.updateMetrics({
+          success: true,
+          size: finalQAPairs.length,
+          timeElapsed: elapsedTime,
+          successRate
+        });
+      } catch (error) {
+        console.warn('[DATASET_GENERATION] Failed to update metrics:', error);
+      }
+
       setProgress(100);
-      setEstimatedTimeRemaining(0);
       
       let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content`;
       
