@@ -750,52 +750,67 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    // Split into smaller batches to avoid token limits
-    const batchSize = 25; // Generate 25 pairs per batch
-    const totalBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
+    // Determine batch size, ensuring it's defined.
+    const batchSize = 25; // Standard batch size for Q&A generation
     const allPairs: QAPair[] = [];
+    let batch = 0;
 
-    console.log(`[GEMINI] Generating Q&A pairs in ${totalBatches} batches of ${batchSize} pairs each`);
+    // Calculate an initial estimate for totalBatches for logging and a safe upper limit
+    const initialEstimatedBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
+    // Allow a few extra attempts beyond the initial estimate, e.g., 3 more or 1.5x, whichever is larger.
+    // Let's go with +3 for simplicity and to avoid very small increments if QA_PAIR_COUNT_TARGET is small.
+    const MAX_BATCHES_TO_ATTEMPT = initialEstimatedBatches + 3;
 
-    for (let batch = 0; batch < totalBatches; batch++) {
-      const isLastBatch = batch === totalBatches - 1;
-      const pairsInThisBatch = isLastBatch ? QA_PAIR_COUNT_TARGET - (batch * batchSize) : batchSize;
+    console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
+
+    while (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT) {
+      const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
       
-      console.log(`[GEMINI] Generating batch ${batch + 1}/${totalBatches} (${pairsInThisBatch} pairs)`);
+      console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
 
       try {
         const batchPairs = await this.generateQAPairsBatch(
           content, 
           themes, 
           fineTuningGoal, 
-          pairsInThisBatch,
-          batch + 1,
-          totalBatches
+          pairsToGenerateInThisBatch, // Use fixed batchSize
+          batch + 1, // Current batch number
+          MAX_BATCHES_TO_ATTEMPT // Pass max attempts for logging/prompt consistency in generateQAPairsBatch
         );
         
         allPairs.push(...batchPairs);
-        console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated`);
+        console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
 
-        // Small delay between batches to avoid rate limiting
-        if (batch < totalBatches - 1) {
+        // Small delay between batches to avoid rate limiting, only if more pairs are needed and not the last attempt
+        if (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
-
       } catch (error: any) {
         console.error(`[GEMINI] Batch ${batch + 1} failed:`, error);
-        // Continue with other batches instead of failing completely
+        // Decide if to break or continue on batch failure. For now, let's continue to allow subsequent batches.
       }
+      batch++;
     }
 
-    if (allPairs.length === 0) {
-      throw new Error('Failed to generate any Q&A pairs across all batches');
+    if (allPairs.length < QA_PAIR_COUNT_TARGET) {
+      console.warn(`[GEMINI] Generated ${allPairs.length} pairs, which is less than the target of ${QA_PAIR_COUNT_TARGET} after ${batch} batches.`);
+    }
+
+    if (batch >= MAX_BATCHES_TO_ATTEMPT && allPairs.length < QA_PAIR_COUNT_TARGET) {
+      console.warn(`[GEMINI] Reached max batches limit (${MAX_BATCHES_TO_ATTEMPT}) but still under target pairs. Generated: ${allPairs.length}`);
+    }
+
+    if (allPairs.length === 0 && QA_PAIR_COUNT_TARGET > 0) { // Check if target was > 0 to avoid error for 0 target
+        throw new Error('Failed to generate any Q&A pairs across all attempted batches.');
     }
 
     // Shuffle the final array to randomize order
     const shuffledPairs = this.shuffleArray(allPairs);
 
-    console.log('[GEMINI] Q&A generation completed:', {
-      total: shuffledPairs.length,
+    console.log('[GEMINI] Q&A generation process completed:', {
+      target: QA_PAIR_COUNT_TARGET,
+      generated: shuffledPairs.length,
+      batchesAttempted: batch,
       correct: shuffledPairs.filter(p => p.isCorrect).length,
       incorrect: shuffledPairs.filter(p => !p.isCorrect).length
     });
