@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
-import { SYNTHETIC_QA_TARGET } from '../constants';
+import { SYNTHETIC_QA_TARGET_MIN, SYNTHETIC_QA_TARGET_MAX } from '../constants';
 
 // Create promises for conditional imports without top-level await
 const openRouterServicePromise = import('../services/openRouterService').then(module => {
