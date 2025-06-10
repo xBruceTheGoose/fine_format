@@ -635,13 +635,14 @@ FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 ${goalSpecificGuidance}
 
 AUGMENTATION STRATEGY:
-1. Analyze core themes and identify enhancement opportunities
-2. Use Google Search to find current, authoritative information
-3. Integrate web-sourced content seamlessly with original material
-4. Maintain coherent narrative flow and logical organization
-5. Prioritize factual accuracy and source credibility
-6. Enhance content depth while preserving original themes
-7. Optimize for comprehensive Q&A generation coverage
+1. Analyze core themes and identify enhancement opportunities.
+2. Use Google Search to find current, authoritative, and *recently updated* information relevant to these themes.
+3. Prioritize fetching information that is *new* and not redundant with the original content, unless it offers significant updates or deeper insights.
+4. Integrate web-sourced content seamlessly, ensuring it is distinct and complementary, not just a rephrasing of existing text.
+5. Maintain coherent narrative flow and logical organization.
+6. Prioritize factual accuracy and source credibility in all augmented content.
+7. Enhance content depth and breadth while preserving original core themes.
+8. Optimize the combined content for comprehensive Q&A generation coverage.
 
 INTEGRATION REQUIREMENTS:
 - Preserve all original content and themes
@@ -763,7 +764,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
 
-    while (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT) {
+    while (batch < MAX_BATCHES_TO_ATTEMPT) {
       const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
       
       console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
@@ -781,8 +782,13 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
         allPairs.push(...batchPairs);
         console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
 
-        // Small delay between batches to avoid rate limiting, only if more pairs are needed and not the last attempt
-        if (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT - 1) {
+        if (batchPairs.length === 0 && batch >= initialEstimatedBatches) {
+          console.log("[GEMINI] Current batch returned 0 pairs after reaching initial estimated batches. Stopping further generation in this phase.");
+          break;
+        }
+
+        // Small delay between batches to avoid rate limiting, only if not the last attempt
+        if (batch < MAX_BATCHES_TO_ATTEMPT - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {
