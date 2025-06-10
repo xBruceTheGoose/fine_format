@@ -39,6 +39,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<FineTuningMethod>('generic');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showCitations, setShowCitations] = useState(false);
 
   const selectedConfig = FINE_TUNING_METHODS.find(m => m.id === selectedMethod);
 
@@ -328,35 +329,44 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {webSources.length > 0 && (
         <Card>
           <CardHeader>
-            <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
-              <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
-              WEB SOURCES USED ({webSources.length})
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+                <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+                WEB SOURCES USED ({webSources.length})
+              </h4>
+              {webSources.length > 0 && (
+                <Button variant="outline" size="sm" onClick={() => setShowCitations(!showCitations)} className="ml-4 font-mono">
+                  {showCitations ? 'HIDE SOURCES' : 'SHOW SOURCES'}
+                </Button>
+              )}
+            </div>
             <p className="text-foreground font-mono mt-2">
               Content was enhanced with information from these web sources
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {webSources.map((chunk, index) => (
-                chunk.web && (
-                  <a
-                    key={index}
-                    href={chunk.web.uri}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block p-4 bg-surface/50 rounded-lg font-mono text-accent hover:text-primary hover:bg-surface/70 transition-all duration-300 border border-border hover:border-primary/50"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
-                    }}
-                  >
-                    <div className="font-bold tracking-wide">{chunk.web.title || 'Web Source'}</div>
-                    <div className="text-muted text-sm mt-1 truncate">{chunk.web.uri}</div>
-                  </a>
-                )
-              ))}
-            </div>
-          </CardContent>
+          {showCitations && webSources.length > 0 && (
+            <CardContent>
+              <div className="space-y-3">
+                {webSources.map((chunk, index) => (
+                  chunk.web && (
+                    <a
+                      key={index}
+                      href={chunk.web.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-4 bg-surface/50 rounded-lg font-mono text-accent hover:text-primary hover:bg-surface/70 transition-all duration-300 border border-border hover:border-primary/50"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
+                      }}
+                    >
+                      <div className="font-bold tracking-wide">{chunk.web.title || 'Web Source'}</div>
+                      <div className="text-muted text-sm mt-1 truncate">{chunk.web.uri}</div>
+                    </a>
+                  )
+                ))}
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
 

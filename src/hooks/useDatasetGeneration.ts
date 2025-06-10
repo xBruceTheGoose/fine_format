@@ -1,6 +1,15 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
+
+const playCompletionSound = () => {
+  const audio = new Audio('/20591276_cute-cartoon-character-voice-ta-da_by_applehillstudios_preview.mp3');
+  audio.play().catch(error => {
+    console.warn('Audio notification playback failed:', error);
+    // Browsers might block autoplay if user hasn't interacted with the page,
+    // or if the feature is disabled. This warning is for developers.
+  });
+};
 import { SYNTHETIC_QA_TARGET_MIN, SYNTHETIC_QA_TARGET_MAX } from '../constants';
 import { metricsService } from '../services/metricsService';
 
@@ -550,6 +559,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       setCurrentStep(completionMessage);
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
+
+      // Play sound notification
+      playCompletionSound();
 
       // Send completion notification
       if (notificationService) {

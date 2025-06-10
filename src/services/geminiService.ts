@@ -635,13 +635,14 @@ FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 ${goalSpecificGuidance}
 
 AUGMENTATION STRATEGY:
-1. Analyze core themes and identify enhancement opportunities
-2. Use Google Search to find current, authoritative information
-3. Integrate web-sourced content seamlessly with original material
-4. Maintain coherent narrative flow and logical organization
-5. Prioritize factual accuracy and source credibility
-6. Enhance content depth while preserving original themes
-7. Optimize for comprehensive Q&A generation coverage
+1. Analyze core themes and identify enhancement opportunities.
+2. Use Google Search to find current, authoritative, and *recently updated* information relevant to these themes.
+3. Prioritize fetching information that is *new* and not redundant with the original content, unless it offers significant updates or deeper insights.
+4. Integrate web-sourced content seamlessly, ensuring it is distinct and complementary, not just a rephrasing of existing text.
+5. Maintain coherent narrative flow and logical organization.
+6. Prioritize factual accuracy and source credibility in all augmented content.
+7. Enhance content depth and breadth while preserving original core themes.
+8. Optimize the combined content for comprehensive Q&A generation coverage.
 
 INTEGRATION REQUIREMENTS:
 - Preserve all original content and themes
