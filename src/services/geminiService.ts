@@ -764,7 +764,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
 
-    while (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT) {
+    while (batch < MAX_BATCHES_TO_ATTEMPT) {
       const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
       
       console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
@@ -782,8 +782,13 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
         allPairs.push(...batchPairs);
         console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
 
-        // Small delay between batches to avoid rate limiting, only if more pairs are needed and not the last attempt
-        if (allPairs.length < QA_PAIR_COUNT_TARGET && batch < MAX_BATCHES_TO_ATTEMPT - 1) {
+        if (batchPairs.length === 0 && batch >= initialEstimatedBatches) {
+          console.log("[GEMINI] Current batch returned 0 pairs after reaching initial estimated batches. Stopping further generation in this phase.");
+          break;
+        }
+
+        // Small delay between batches to avoid rate limiting, only if not the last attempt
+        if (batch < MAX_BATCHES_TO_ATTEMPT - 1) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {
