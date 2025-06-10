@@ -4,7 +4,6 @@
 
 [functions]
   directory = "netlify/functions"
-  # Timeout setting removed due to invalid syntax. To set timeouts, use per-function configuration if needed.
 
 [[redirects]]
   from = "/api/*"
