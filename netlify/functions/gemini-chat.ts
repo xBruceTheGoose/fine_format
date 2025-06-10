@@ -76,21 +76,32 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     const requestConfig: any = {
       model: 'gemini-2.0-flash-exp',
       contents,
+      config: {
+        maxOutputTokens: Math.min(max_tokens || 4000, 20000), // Increased max limit
+        temperature: temperature || 0.7,
+        topP: 0.95,
+        topK: 40,
+        ...config
+      }
     };
-
-    // Add generation config if provided
-    if (config) {
-      requestConfig.config = config;
-    }
 
     // Add tools if provided (for web search)
     if (tools) {
-      requestConfig.config = { ...requestConfig.config, tools };
+      requestConfig.config.tools = tools;
     }
+
+    console.log('[NETLIFY-GEMINI] Making request with config:', {
+      model: requestConfig.model,
+      maxOutputTokens: requestConfig.config.maxOutputTokens,
+      temperature: requestConfig.config.temperature,
+      hasTools: !!tools,
+      messageCount: contents.length
+    });
 
     const response = await ai.models.generateContent(requestConfig);
     
     if (!response.text) {
+      console.error('[NETLIFY-GEMINI] No response text from Gemini API');
       return {
         statusCode: 500,
         headers: {
@@ -101,6 +112,14 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       };
     }
 
+    const responseText = response.text();
+    console.log('[NETLIFY-GEMINI] Response received, length:', responseText.length);
+
+    // Check if response was truncated
+    if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
+      console.warn('[NETLIFY-GEMINI] Response was truncated due to token limit');
+    }
+
     return {
       statusCode: 200,
       headers: {
@@ -108,23 +127,42 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: response.text(),
+        content: responseText,
         candidates: response.candidates,
         usage: response.usageMetadata,
+        finishReason: response.candidates?.[0]?.finishReason,
+        truncated: response.candidates?.[0]?.finishReason === 'MAX_TOKENS'
       }),
     };
 
   } catch (error: any) {
-    console.error('Gemini API request failed:', error);
+    console.error('[NETLIFY-GEMINI] Request failed:', error);
+    
+    // Enhanced error handling
+    let errorMessage = 'Failed to process request';
+    let statusCode = 500;
+    
+    if (error.message?.includes('timeout')) {
+      errorMessage = 'Request timed out - content may be too large';
+      statusCode = 408;
+    } else if (error.message?.includes('quota')) {
+      errorMessage = 'API quota exceeded - please try again later';
+      statusCode = 429;
+    } else if (error.message?.includes('invalid')) {
+      errorMessage = 'Invalid request format';
+      statusCode = 400;
+    }
+    
     return {
-      statusCode: 500,
+      statusCode,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        error: 'Failed to process request',
-        details: error.message 
+        error: errorMessage,
+        details: error.message,
+        type: error.name || 'UnknownError'
       }),
     };
   }

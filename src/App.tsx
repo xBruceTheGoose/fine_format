@@ -498,7 +498,7 @@ const App: React.FC = () => {
               {isProcessing 
                 ? <span className="neon-text">GENERATING DATASET...</span>
                 : <span>
-                    <span className="neon-text">GENERATE 100{enableGapFilling && openRouterReady ? '+' : ''} Q&A DATASET</span>
+                    <span className="neon-text">GENERATE DATASET</span>
                     <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
                   </span>
               }

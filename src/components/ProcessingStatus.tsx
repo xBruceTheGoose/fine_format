@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
 import { Card, CardContent } from './ui/Card';
 import { ThoughtBubble } from './ui/ThoughtBubble';
@@ -12,6 +12,7 @@ interface ProcessingStatusProps {
   totalEstimatedTime?: number;
 }
 
+
 export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
   isProcessing,
   currentStep,
@@ -23,6 +24,33 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
 
   const isError = currentStep.includes('error') || currentStep.includes('failed');
   const isComplete = !isProcessing && !isError;
+
+  // Countdown timer state
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync countdown with estimatedTimeRemaining when processing starts or changes
+  useEffect(() => {
+    if (isProcessing && typeof estimatedTimeRemaining === 'number') {
+      setCountdown(Math.ceil(estimatedTimeRemaining));
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(() => {
+        setCountdown(prev => (prev !== null && prev > 0 ? prev - 1 : 0));
+      }, 1000);
+    } else {
+      setCountdown(null);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isProcessing, estimatedTimeRemaining]);
 
   const formatTime = (seconds: number): string => {
     if (seconds < 60) return `${Math.round(seconds)}s`;
@@ -95,11 +123,15 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
                     <span className="text-accent">TIME ESTIMATES:</span>
                   </div>
                   <div className="flex items-center space-x-4">
-                    {estimatedTimeRemaining && (
+                    {typeof countdown === 'number' && countdown >= 0 ? (
+                      <span className="text-warning font-bold animate-pulse">
+                        {formatTime(countdown)} remaining
+                      </span>
+                    ) : estimatedTimeRemaining ? (
                       <span className="text-warning font-bold">
                         {formatTime(estimatedTimeRemaining)} remaining
                       </span>
-                    )}
+                    ) : null}
                     {totalEstimatedTime && (
                       <span className="text-muted">
                         {formatTime(totalEstimatedTime)} total

@@ -35,6 +35,8 @@ class GeminiService {
   }
 
   private parseJsonResponse(responseText: string): any {
+    console.log('[GEMINI] Parsing JSON response, length:', responseText.length);
+    
     let jsonStr = responseText.trim();
     
     // Remove code fences if present
@@ -42,33 +44,198 @@ class GeminiService {
     const match = jsonStr.match(fenceRegex);
     if (match?.[1]) {
       jsonStr = match[1].trim();
+      console.log('[GEMINI] Removed code fences from response');
     }
 
-    // Try to find JSON array boundaries more carefully
-    const firstBracket = jsonStr.indexOf('[');
-    const lastBracket = jsonStr.lastIndexOf(']');
+    // Enhanced JSON extraction with multiple strategies
+    return this.parseWithMultipleStrategies(jsonStr, responseText);
+  }
+
+  private parseWithMultipleStrategies(jsonStr: string, originalResponse: string): any {
+    // Strategy 1: Direct parsing
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log('[GEMINI] ✅ Direct parsing successful with', parsed.length, 'items');
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('[GEMINI] Direct parsing failed:', error.message);
+    }
+
+    // Strategy 2: Extract JSON array boundaries
+    try {
+      const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (arrayMatch) {
+        const extracted = arrayMatch[0];
+        const parsed = JSON.parse(extracted);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          console.log('[GEMINI] ✅ Array extraction successful with', parsed.length, 'items');
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.warn('[GEMINI] Array extraction failed:', error.message);
+    }
+
+    // Strategy 3: Fix common JSON issues and retry
+    try {
+      const fixedJson = this.fixCommonJsonIssues(jsonStr);
+      const parsed = JSON.parse(fixedJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log('[GEMINI] ✅ Fixed JSON parsing successful with', parsed.length, 'items');
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('[GEMINI] Fixed JSON parsing failed:', error.message);
+    }
+
+    // Strategy 4: Extract individual objects
+    try {
+      const extractedObjects = this.extractIndividualObjects(originalResponse);
+      if (extractedObjects.length > 0) {
+        console.log('[GEMINI] ✅ Object extraction successful with', extractedObjects.length, 'items');
+        return extractedObjects;
+      }
+    } catch (error) {
+      console.warn('[GEMINI] Object extraction failed:', error.message);
+    }
+
+    // Strategy 5: Partial recovery from truncated response
+    try {
+      const partialObjects = this.recoverPartialResponse(originalResponse);
+      if (partialObjects.length > 0) {
+        console.log('[GEMINI] ⚠️ Partial recovery successful with', partialObjects.length, 'items');
+        return partialObjects;
+      }
+    } catch (error) {
+      console.warn('[GEMINI] Partial recovery failed:', error.message);
+    }
+
+    // All strategies failed
+    console.error('[GEMINI] ❌ All parsing strategies failed');
+    console.error('[GEMINI] Response length:', originalResponse.length);
+    console.error('[GEMINI] First 500 chars:', originalResponse.substring(0, 500));
+    console.error('[GEMINI] Last 500 chars:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
     
-    if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-      const potentialJson = jsonStr.substring(firstBracket, lastBracket + 1);
-      
-      // Validate that this looks like valid JSON before using it
+    throw new Error(`Failed to parse JSON response. Response may be truncated or malformed. Length: ${originalResponse.length}`);
+  }
+
+  private fixCommonJsonIssues(jsonStr: string): string {
+    return jsonStr
+      // Remove trailing commas
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Fix unescaped quotes in strings
+      .replace(/(?<!\\)"/g, '\\"')
+      .replace(/\\\\"/g, '\\"')
+      // Fix incomplete objects at the end
+      .replace(/,\s*$/, '')
+      // Ensure proper array closure
+      .replace(/}\s*$/, '}]')
+      // Remove control characters
+      .replace(/[\x00-\x1F\x7F]/g, '');
+  }
+
+  private extractIndividualObjects(text: string): any[] {
+    console.log('[GEMINI] Extracting individual JSON objects');
+    
+    // Enhanced regex to match complete JSON objects
+    const objectPattern = /\{\s*"user"\s*:\s*"[^"]*(?:\\.[^"]*)*"\s*,\s*"model"\s*:\s*"[^"]*(?:\\.[^"]*)*"\s*,\s*"isCorrect"\s*:\s*(?:true|false)\s*(?:,\s*"confidence"\s*:\s*[\d.]+)?\s*\}/g;
+    
+    const matches = text.match(objectPattern) || [];
+    console.log('[GEMINI] Found', matches.length, 'potential objects');
+    
+    const validObjects = [];
+    for (const match of matches) {
       try {
-        JSON.parse(potentialJson);
-        jsonStr = potentialJson;
-      } catch {
-        // If extracted portion is invalid, use original
-        console.warn('[GEMINI] Extracted JSON portion is invalid, using original response');
+        const obj = JSON.parse(match);
+        if (this.isValidQAPair(obj)) {
+          validObjects.push(obj);
+        }
+      } catch (error) {
+        console.warn('[GEMINI] Failed to parse extracted object:', error.message);
       }
     }
+    
+    return validObjects;
+  }
 
-    try {
-      return JSON.parse(jsonStr);
-    } catch (error) {
-      console.error('[GEMINI] Failed to parse JSON response:', error);
-      console.error('[GEMINI] Raw response (first 500 chars):', responseText.substring(0, 500));
-      console.error('[GEMINI] Processed JSON string (first 500 chars):', jsonStr.substring(0, 500));
-      throw new Error(`Invalid JSON response from Gemini: ${responseText.substring(0, 200)}...`);
+  private recoverPartialResponse(text: string): any[] {
+    console.log('[GEMINI] Attempting partial response recovery');
+    
+    // Look for the start of the JSON array
+    const arrayStart = text.indexOf('[');
+    if (arrayStart === -1) {
+      return [];
     }
+    
+    // Extract everything from the array start
+    const arrayContent = text.substring(arrayStart);
+    
+    // Find complete objects before any truncation
+    const objects = [];
+    let currentPos = 1; // Skip the opening bracket
+    let braceCount = 0;
+    let inString = false;
+    let escaped = false;
+    let objectStart = -1;
+    
+    for (let i = currentPos; i < arrayContent.length; i++) {
+      const char = arrayContent[i];
+      
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      
+      if (char === '\\') {
+        escaped = true;
+        continue;
+      }
+      
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      
+      if (inString) {
+        continue;
+      }
+      
+      if (char === '{') {
+        if (braceCount === 0) {
+          objectStart = i;
+        }
+        braceCount++;
+      } else if (char === '}') {
+        braceCount--;
+        if (braceCount === 0 && objectStart !== -1) {
+          // Complete object found
+          const objectStr = arrayContent.substring(objectStart, i + 1);
+          try {
+            const obj = JSON.parse(objectStr);
+            if (this.isValidQAPair(obj)) {
+              objects.push(obj);
+            }
+          } catch (error) {
+            console.warn('[GEMINI] Failed to parse recovered object:', error.message);
+          }
+          objectStart = -1;
+        }
+      }
+    }
+    
+    console.log('[GEMINI] Recovered', objects.length, 'complete objects from partial response');
+    return objects;
+  }
+
+  private isValidQAPair(obj: any): boolean {
+    return obj &&
+           typeof obj.user === 'string' &&
+           typeof obj.model === 'string' &&
+           typeof obj.isCorrect === 'boolean' &&
+           obj.user.trim().length > 0 &&
+           obj.model.trim().length > 0;
   }
 
   private getGoalSpecificPromptGuidance(goal: FineTuningGoal): string {
@@ -263,8 +430,8 @@ Generate the theme array now:`;
         ],
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 1200, // Increased for more detailed theme analysis
-          temperature: 0.3, // Lower temperature for consistent theme identification
+          maxOutputTokens: 1200,
+          temperature: 0.3,
         },
       });
 
@@ -280,10 +447,9 @@ Generate the theme array now:`;
       );
 
       console.log('[GEMINI] Identified themes:', validThemes);
-      return validThemes.slice(0, 8); // Limit to 8 themes max
+      return validThemes.slice(0, 8);
     } catch (error: any) {
       console.error('[GEMINI] Theme identification failed:', error);
-      // Return empty array if theme identification fails - web search will still work
       return [];
     }
   }
@@ -355,8 +521,8 @@ ${textContent}
           { role: 'user', parts: [{ text: userPrompt }] }
         ],
         config: {
-          maxOutputTokens: 10000, // Increased to handle larger content without truncation
-          temperature: 0.1, // Very low temperature for consistent cleaning
+          maxOutputTokens: 10000,
+          temperature: 0.1,
         },
       });
 
@@ -423,8 +589,8 @@ Return only the extracted, optimized text content without commentary. If no mean
         model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: userParts }],
         config: {
-          maxOutputTokens: 10000, // Increased to handle larger extracted content
-          temperature: 0.1, // Very low temperature for consistent extraction
+          maxOutputTokens: 10000,
+          temperature: 0.1,
         },
       });
 
@@ -509,8 +675,8 @@ ${originalContent}
         ],
         config: {
           tools: [{ googleSearch: {} }],
-          maxOutputTokens: 12000, // Increased for comprehensive augmentation
-          temperature: 0.4, // Balanced temperature for creative integration
+          maxOutputTokens: 12000,
+          temperature: 0.4,
         },
       });
 
@@ -584,6 +750,76 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
+    // Split into smaller batches to avoid token limits
+    const batchSize = 25; // Generate 25 pairs per batch
+    const totalBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
+    const allPairs: QAPair[] = [];
+
+    console.log(`[GEMINI] Generating Q&A pairs in ${totalBatches} batches of ${batchSize} pairs each`);
+
+    for (let batch = 0; batch < totalBatches; batch++) {
+      const isLastBatch = batch === totalBatches - 1;
+      const pairsInThisBatch = isLastBatch ? QA_PAIR_COUNT_TARGET - (batch * batchSize) : batchSize;
+      
+      console.log(`[GEMINI] Generating batch ${batch + 1}/${totalBatches} (${pairsInThisBatch} pairs)`);
+
+      try {
+        const batchPairs = await this.generateQAPairsBatch(
+          content, 
+          themes, 
+          fineTuningGoal, 
+          pairsInThisBatch,
+          batch + 1,
+          totalBatches
+        );
+        
+        allPairs.push(...batchPairs);
+        console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated`);
+
+        // Small delay between batches to avoid rate limiting
+        if (batch < totalBatches - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+      } catch (error: any) {
+        console.error(`[GEMINI] Batch ${batch + 1} failed:`, error);
+        // Continue with other batches instead of failing completely
+      }
+    }
+
+    if (allPairs.length === 0) {
+      throw new Error('Failed to generate any Q&A pairs across all batches');
+    }
+
+    // Shuffle the final array to randomize order
+    const shuffledPairs = this.shuffleArray(allPairs);
+
+    console.log('[GEMINI] Q&A generation completed:', {
+      total: shuffledPairs.length,
+      correct: shuffledPairs.filter(p => p.isCorrect).length,
+      incorrect: shuffledPairs.filter(p => !p.isCorrect).length
+    });
+
+    return shuffledPairs;
+  }
+
+  private async generateQAPairsBatch(
+    content: string,
+    themes: string[],
+    fineTuningGoal: FineTuningGoal,
+    batchSize: number,
+    batchNumber: number,
+    totalBatches: number
+  ): Promise<QAPair[]> {
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+    const themeGuidance = themes.length > 0 
+      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure coverage of these themes in this batch.`
+      : '';
+
+    const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
+    const incorrectCount = Math.max(1, Math.ceil(batchSize * INCORRECT_ANSWER_RATIO));
+    const correctCount = batchSize - incorrectCount;
+
     const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
 
 EXPERTISE:
@@ -593,119 +829,81 @@ EXPERTISE:
 - Quality assessment and consistency maintenance
 - Dataset balance and discrimination training
 
-OBJECTIVE: Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality Q&A pairs optimized for ${goalConfig?.name} fine-tuning, including strategic incorrect answers for model discrimination training.`;
+OBJECTIVE: Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}, optimized for ${goalConfig?.name} fine-tuning.`;
 
-    const userPrompt = `Generate exactly ${QA_PAIR_COUNT_TARGET} high-quality Q&A pairs optimized for ${goalConfig?.name} fine-tuning.
+    const userPrompt = `Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 
 ${goalSpecificGuidance}
 
-GENERATION REQUIREMENTS:
-- Generate exactly ${QA_PAIR_COUNT_TARGET} total Q&A pairs
-- Include approximately 5-10% incorrect answers (${Math.ceil(QA_PAIR_COUNT_TARGET * INCORRECT_ANSWER_RATIO)} pairs) for discrimination training
-- Questions must be natural, diverse, and appropriately challenging
-- Cover multiple difficulty levels from basic to advanced
-- Ensure comprehensive coverage of all content areas
-- Avoid self-referential phrases like "according to the text" or "based on the document"
-- Create questions that would naturally arise from users interested in this content
+BATCH REQUIREMENTS:
+- Generate exactly ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
+- Ensure variety in question types and complexity levels
+- Focus on different aspects of the content for this batch
+- Maintain high quality standards throughout
+- Avoid repetition from previous batches
 
-QUALITY STANDARDS FOR CORRECT ANSWERS:
-- Comprehensive and informative responses
-- Factually accurate based on the provided content
-- Appropriate depth and detail for the question complexity
-- Clear, well-structured, and easy to understand
-- Aligned with the ${goalConfig?.name} objective
-- Confidence scores between 0.85-0.95
+CRITICAL JSON FORMAT:
+- Respond with ONLY a valid JSON array
+- Start immediately with [ and end with ]
+- Each object: {"user": "question", "model": "answer", "isCorrect": boolean, "confidence": number}
+- Properly escape all strings
+- No markdown, explanations, or code blocks
 
-QUALITY STANDARDS FOR INCORRECT ANSWERS:
-- Plausible but factually wrong information
-- Similar structure and style to correct answers
-- Common misconceptions or logical errors
-- Clearly distinguishable as incorrect for training purposes
-- Confidence scores between 0.1-0.4
-
-JSON FORMAT REQUIREMENTS:
-- Return a valid JSON array of exactly ${QA_PAIR_COUNT_TARGET} objects
-- Each object must have: "user", "model", "isCorrect", "confidence"
-- Properly escape all strings and special characters
-- No additional commentary or explanations
-
-EXAMPLE FORMAT:
-[
-  {
-    "user": "What is the primary benefit of this approach?",
-    "model": "The primary benefit is [detailed, accurate answer based on content]",
-    "isCorrect": true,
-    "confidence": 0.92
-  },
-  {
-    "user": "When was this method first developed?",
-    "model": "This method was first developed in 1995 by researchers at MIT",
-    "isCorrect": false,
-    "confidence": 0.25
-  }
-]
-
-CONTENT FOR Q&A GENERATION:
+CONTENT REFERENCE:
 ---
-${content}
+${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for batch focus]' : ''}
 ---
 
-Generate exactly ${QA_PAIR_COUNT_TARGET} Q&A pairs now:`;
+Generate exactly ${batchSize} Q&A pairs now:`;
 
     try {
       const response: GenerateContentResponse = await this.ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `I understand. I will generate exactly ${QA_PAIR_COUNT_TARGET} high-quality Q&A pairs optimized for ${goalConfig?.name} fine-tuning, including strategic incorrect answers for discrimination training.` }] },
+          { role: 'model', parts: [{ text: `I understand. I will generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.` }] },
           { role: 'user', parts: [{ text: userPrompt }] }
         ],
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 12000, // Increased to handle 100 Q&A pairs without truncation
-          temperature: 0.6, // Balanced temperature for diverse question generation
+          maxOutputTokens: 8000, // Increased for batch processing
+          temperature: 0.6,
         },
       });
 
       const qaData = this.parseJsonResponse(response.text);
 
       if (!Array.isArray(qaData)) {
-        throw new Error('Response is not a valid JSON array');
+        throw new Error(`Batch ${batchNumber}: Response is not a valid JSON array`);
       }
 
       const validPairs = qaData.filter(
         (item): item is QAPair =>
-          item &&
-          typeof item.user === 'string' &&
-          typeof item.model === 'string' &&
-          typeof item.isCorrect === 'boolean' &&
-          item.user.trim().length > 0 &&
-          item.model.trim().length > 0
+          this.isValidQAPair(item)
       ).map(pair => ({
         ...pair,
         confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
         source: 'original' as const
       }));
 
-      // Shuffle the array to randomize correct/incorrect order
-      const shuffledPairs = this.shuffleArray(validPairs);
-
-      console.log('[GEMINI] Generated Q&A pairs:', {
-        total: shuffledPairs.length,
-        correct: shuffledPairs.filter(p => p.isCorrect).length,
-        incorrect: shuffledPairs.filter(p => !p.isCorrect).length
+      console.log(`[GEMINI] Batch ${batchNumber} parsed:`, {
+        received: qaData.length,
+        valid: validPairs.length,
+        correct: validPairs.filter(p => p.isCorrect).length,
+        incorrect: validPairs.filter(p => !p.isCorrect).length
       });
 
-      return shuffledPairs;
+      return validPairs;
+
     } catch (error: any) {
-      throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
+      console.error(`[GEMINI] Batch ${batchNumber} generation failed:`, error);
+      throw new Error(`Batch ${batchNumber} failed: ${error.message || 'Unknown error'}`);
     }
   }
 
-  // UPDATED: Analyze generated Q&A dataset to identify knowledge gaps with enhanced prompting
   public async identifyKnowledgeGaps(
     originalContent: string,
     identifiedThemes: string[],
@@ -797,8 +995,8 @@ Return a JSON array of knowledge gap objects:
         ],
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 5000, // Increased for comprehensive gap analysis
-          temperature: 0.3, // Lower temperature for consistent analysis
+          maxOutputTokens: 5000,
+          temperature: 0.3,
         },
       });
 
@@ -816,7 +1014,7 @@ Return a JSON array of knowledge gap objects:
         ['high', 'medium', 'low'].includes(gap.priority) &&
         Array.isArray(gap.suggestedQuestionTypes) &&
         Array.isArray(gap.relatedConcepts)
-      ).slice(0, 8); // Limit to 8 gaps max
+      ).slice(0, 8);
 
       console.log('[GEMINI] Identified knowledge gaps:', {
         total: validGaps.length,
@@ -907,14 +1105,13 @@ Provide validation assessment as JSON:
         ],
         config: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 2000, // Sufficient for detailed validation response
-          temperature: 0.2, // Very low temperature for consistent validation
+          maxOutputTokens: 2000,
+          temperature: 0.2,
         },
       });
 
       const validation = this.parseJsonResponse(response.text);
 
-      // Validate the response structure
       if (typeof validation.isValid !== 'boolean' ||
           typeof validation.confidence !== 'number' ||
           typeof validation.reasoning !== 'string' ||
@@ -934,7 +1131,6 @@ Provide validation assessment as JSON:
 
     } catch (error: any) {
       console.error('[GEMINI] Q&A validation failed:', error);
-      // Return a conservative validation result on error
       return {
         isValid: false,
         confidence: 0.1,
