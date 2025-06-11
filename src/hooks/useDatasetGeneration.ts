@@ -1,19 +1,7 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
-
-const playCompletionSound = () => {
-  const audio = new Audio('/20591276_cute-cartoon-character-voice-ta-da_by_applehillstudios_preview.mp3');
-  audio.play().catch(error => {
-    console.warn('Audio notification playback failed:', error);
-    // Browsers might block autoplay if user hasn't interacted with the page,
-    // or if the feature is disabled. This warning is for developers.
-  });
-};
-
-import { SYNTHETIC_QA_TARGET_MIN } from '../constants';
-
-import { metricsService } from '../services/metricsService';
+import { SYNTHETIC_QA_TARGET } from '../constants';
 
 // Create promises for conditional imports without top-level await
 const openRouterServicePromise = import('../services/openRouterService').then(module => {
@@ -344,42 +332,41 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
             
             // Process each gap individually to prevent token overload
-            // Calculate pairs per gap to aim for the total minimum SYNTHETIC_QA_TARGET_MIN
+            // Calculate pairs per gap to reach minimum SYNTHETIC_QA_TARGET_MIN, cap at SYNTHETIC_QA_TARGET_MAX
             const totalGaps = identifiedGaps.length;
-            // Ensure SYNTHETIC_QA_TARGET_MIN is defined. If not, default to a reasonable number like 50.
-            const syntheticQaTargetMin = SYNTHETIC_QA_TARGET_MIN || 50; // This remains as a baseline check for overall generation.
-            const DESIRED_PAIRS_PER_GAP = 12; // Preferred minimum per gap
-            // Ensure syntheticQaTargetMin is defined (it's from constants, should be fine)
-            const pairsToMeetOverallMinSynthetic = totalGaps > 0 ? Math.ceil(syntheticQaTargetMin / totalGaps) : DESIRED_PAIRS_PER_GAP;
-            const targetPairsPerGap = Math.max(DESIRED_PAIRS_PER_GAP, pairsToMeetOverallMinSynthetic);
+            const minPairsPerGap = Math.ceil(SYNTHETIC_QA_TARGET_MIN / totalGaps);
+            const maxPairsPerGap = Math.ceil(SYNTHETIC_QA_TARGET_MAX / totalGaps);
             let allSyntheticPairs: SyntheticQAPair[] = [];
-
-            console.log(`[DATASET_GENERATION] Aiming for ${targetPairsPerGap} synthetic pairs per gap across ${totalGaps} gaps. Total potential synthetic pairs: ${totalGaps * targetPairsPerGap}`);
 
             for (let gapIndex = 0; gapIndex < totalGaps; gapIndex++) {
               const gap = identifiedGaps[gapIndex];
               try {
-                console.log(`[DATASET_GENERATION] Processing gap ${gapIndex + 1}/${totalGaps}: ${gap.id}, requesting ${targetPairsPerGap} pairs.`);
+                console.log(`[DATASET_GENERATION] Processing gap ${gapIndex + 1}/${totalGaps}: ${gap.id}`);
                 updateProgress(
-                  currentStepIndex,
-                  totalSteps,
-                  `Generating synthetic Q&A pairs for gap ${gapIndex + 1}/${totalGaps}: ${gap.description.substring(0, 50)}... (aiming for ${targetPairsPerGap} pairs for this gap)`,
+                  currentStepIndex, 
+                  totalSteps, 
+                  `Generating synthetic Q&A pairs for gap ${gapIndex + 1}/${totalGaps}: ${gap.description.substring(0, 50)}...`,
                   totalSources,
                   enableWebAugmentation,
                   enableGapFilling,
                   totalGaps
                 );
 
+                // Try to generate up to maxPairsPerGap, but ensure at least minPairsPerGap
                 let gapPairs: SyntheticQAPair[] = [];
                 gapPairs = await openRouterService.generateSyntheticQAPairsForGap(
                   combinedContent,
                   gap,
                   fineTuningGoal,
-                  targetPairsPerGap // Use the new targetPairsPerGap
+                  maxPairsPerGap
                 );
-
+                if (gapPairs.length < minPairsPerGap) {
+                  console.warn(`[DATASET_GENERATION] Only ${gapPairs.length} synthetic pairs generated for gap ${gap.id}, less than minimum ${minPairsPerGap}`);
+                }
+                // Only enforce a minimum, not a cap: keep all pairs if more are generated
+                // gapPairs = gapPairs.slice(0, Math.max(minPairsPerGap, gapPairs.length));
                 allSyntheticPairs.push(...gapPairs);
-                console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}. Total synthetic pairs so far: ${allSyntheticPairs.length}`);
+                console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
 
                 // Add a small delay between requests to avoid rate limiting
                 if (gapIndex < totalGaps - 1) {
@@ -392,16 +379,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             }
 
             syntheticPairCount = allSyntheticPairs.length;
-            const expectedSyntheticPairs = totalGaps * targetPairsPerGap;
-            if (syntheticPairCount < expectedSyntheticPairs) {
-              console.warn(`[DATASET_GENERATION] Generated ${syntheticPairCount} synthetic pairs, less than the aimed for ${expectedSyntheticPairs} (${targetPairsPerGap} per gap for ${totalGaps} gaps).`);
-            } else if (syntheticPairCount > 0) {
-              console.log(`[DATASET_GENERATION] Successfully generated ${syntheticPairCount} synthetic pairs, meeting or exceeding the aim of ${targetPairsPerGap} per gap.`);
-            }
-            // Also check against the overall minimum if desired, though the per-gap aim is primary now.
-            if (syntheticPairCount < syntheticQaTargetMin && totalGaps > 0) { // Check totalGaps > 0 to avoid warning if no gaps were found
-                console.warn(`[DATASET_GENERATION] Total synthetic pairs (${syntheticPairCount}) is less than the overall minimum target of ${syntheticQaTargetMin}.`);
-            }
+            console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${totalGaps} gaps`);
 
             // Step 7: Generate validation context for efficient validation
             let validationContext = '';
@@ -539,22 +517,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         gapFillingEnabled: enableGapFilling && openRouterService?.isReady()
       });
 
-      // Update dataset metrics
-      try {
-        const elapsedTime = (Date.now() - (startTime || Date.now())) / 1000;
-        const successRate = correctAnswers.length / finalQAPairs.length;
-        
-        await metricsService.updateMetrics({
-          success: true,
-          size: finalQAPairs.length,
-          timeElapsed: elapsedTime,
-          successRate
-        });
-      } catch (error) {
-        console.warn('[DATASET_GENERATION] Failed to update metrics:', error);
-      }
-
       setProgress(100);
+      setEstimatedTimeRemaining(0);
       
       let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content`;
       
@@ -570,9 +534,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       setCurrentStep(completionMessage);
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
-
-      // Play sound notification
-      playCompletionSound();
 
       // Send completion notification
       if (notificationService) {

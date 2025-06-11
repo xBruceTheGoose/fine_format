@@ -3,6 +3,7 @@ import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp'; // This IS Flash Lite - confirmed migration
 export const QA_PAIR_COUNT_TARGET = 100; // Minimum 100 Q&A pairs from original content (Gemini)
 export const SYNTHETIC_QA_TARGET_MIN = 50; // Minimum 50 synthetic pairs
+export const SYNTHETIC_QA_TARGET_MAX = 80; // Maximum 80 synthetic pairs
 export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
 
 // Batch processing settings to avoid token limits

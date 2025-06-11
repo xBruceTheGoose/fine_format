@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [enableGapFilling, setEnableGapFilling] = useState(true);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   const [currentGoalIndex, setCurrentGoalIndex] = useState(1); // Start with 'knowledge' (index 1)
+  const [openRouterReady, setOpenRouterReady] = useState(false);
   
   const {
     processedData,
@@ -43,10 +44,39 @@ const App: React.FC = () => {
     clearError,
   } = useDatasetGeneration();
 
+  // Check OpenRouter service status periodically
+  useEffect(() => {
+    const checkOpenRouterStatus = () => {
+      if (openRouterService) {
+        const isReady = openRouterService.isReady();
+        setOpenRouterReady(isReady);
+        
+        // Only log status changes to reduce console noise
+        if (isReady !== openRouterReady) {
+          console.log('[APP] OpenRouter service status changed:', isReady);
+        }
+      }
+    };
+
+    // Check immediately
+    checkOpenRouterStatus();
+
+    // Check every 5 seconds for the first 30 seconds (in case service loads async)
+    const interval = setInterval(checkOpenRouterStatus, 5000);
+    
+    // Clear interval after 30 seconds
+    setTimeout(() => {
+      clearInterval(interval);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [openRouterReady]);
+
+  const isGeminiReady = geminiService.isReady();
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
-  const canGenerate = totalReadySources > 0 && !isProcessing;
+  const canGenerate = totalReadySources > 0 && isGeminiReady && !isProcessing;
 
   const handleGenerateDataset = () => {
     if (canGenerate) {
@@ -134,6 +164,24 @@ const App: React.FC = () => {
         </header>
 
         <div className="space-y-8">
+          {/* API Key Warning */}
+          {!isGeminiReady && (
+            <Alert
+              type="warning"
+              title="GEMINI API KEY REQUIRED"
+              message="Please set your Gemini API key as VITE_GEMINI_API_KEY in the .env.local file and restart the development server."
+            />
+          )}
+
+          {/* OpenRouter Warning for Gap Filling */}
+          {enableGapFilling && !openRouterReady && (
+            <Alert
+              type="warning"
+              title="OPENROUTER API KEY REQUIRED FOR GAP FILLING"
+              message="Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server."
+            />
+          )}
+
           {/* Error Display */}
           {error && (
             <Alert
@@ -370,7 +418,7 @@ const App: React.FC = () => {
                       id="webAugmentation"
                       checked={enableWebAugmentation}
                       onChange={(e) => setEnableWebAugmentation(e.target.checked)}
-                      disabled={isProcessing}
+                      disabled={isProcessing || !isGeminiReady}
                       className="h-6 w-6 rounded border-2 border-primary bg-surface text-primary focus:ring-primary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
                       style={{
                         accentColor: '#00FF41',
@@ -400,7 +448,7 @@ const App: React.FC = () => {
                       id="gapFilling"
                       checked={enableGapFilling}
                       onChange={(e) => setEnableGapFilling(e.target.checked)}
-                      disabled={isProcessing}
+                      disabled={isProcessing || !isGeminiReady}
                       className="h-6 w-6 rounded border-2 border-secondary bg-surface text-secondary focus:ring-secondary focus:ring-2 focus:ring-offset-0 disabled:opacity-50"
                       style={{
                         accentColor: '#dc1aff',
@@ -427,6 +475,11 @@ const App: React.FC = () => {
                     <div className="text-accent text-sm font-mono ml-7">
                       🔍 Dual-model cross validation guarantees validity and relevance of synthetic data augments
                     </div>
+                    {!openRouterReady && (
+                      <div className="text-warning text-sm font-mono ml-7">
+                        ⚠️ OpenRouter API key required for gap filling functionality
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
