@@ -16,6 +16,11 @@ class OpenRouterService {
                    import.meta.env.OPENROUTER_API_KEY ||
                    import.meta.env.VITE_OPENROUTER_KEY;
     
+    // Check if gap filling is enabled in environment
+    const gapFillingEnabled = import.meta.env.VITE_ENABLE_GAP_FILLING === 'true' || 
+                              import.meta.env.ENABLE_GAP_FILLING === 'true';
+    console.log('[OPENROUTER] Gap filling enabled in environment:', gapFillingEnabled);
+    
     console.log('[OPENROUTER] All environment variables:');
     console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
     console.log('[OPENROUTER] Found env var: VITE_OPENROUTER_API_KEY =', import.meta.env.VITE_OPENROUTER_API_KEY ? import.meta.env.VITE_OPENROUTER_API_KEY.substring(0, 15) + '...' : 'undefined');
@@ -375,6 +380,17 @@ class OpenRouterService {
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     
+    // Extract key concepts and sample Q&A pairs instead of using full content
+    const sampleQAPairs = initialQAPairs.slice(0, 10).map(pair => 
+      `Q: ${pair.user}\nA: ${pair.model} (${pair.isCorrect ? 'Correct' : 'Incorrect'})`
+    ).join('\n\n');
+    
+    const keyThemes = identifiedThemes.join(', ');
+    
+    const gapDescriptions = identifiedGaps.map(gap => 
+      `• ${gap.id}: ${gap.description} (${gap.theme}, Priority: ${gap.priority})`
+    ).join('\n');
+    
     const systemPrompt = `You are an expert dataset analyst and validation specialist. Your task is to create a comprehensive validation reference that will be used to efficiently validate synthetic Q&A pairs.
 
 EXPERTISE AREAS:
@@ -392,25 +408,23 @@ FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
 DATASET OVERVIEW:
-- Original content themes: ${identifiedThemes.join(', ')}
+- Original content themes: ${keyThemes}
 - Initial Q&A pairs: ${initialQAPairs.length} (${initialQAPairs.filter(p => p.isCorrect).length} correct, ${initialQAPairs.filter(p => !p.isCorrect).length} incorrect)
 - Knowledge gaps identified: ${identifiedGaps.length}
 - Synthetic pairs to validate: ${allSyntheticPairs.length}
 
 KNOWLEDGE GAPS TO ADDRESS:
-${identifiedGaps.map(gap => `• ${gap.id}: ${gap.description} (Priority: ${gap.priority})
-  - Suggested question types: ${gap.suggestedQuestionTypes.join(', ')}
-  - Related concepts: ${gap.relatedConcepts.join(', ')}`).join('\n')}
+${gapDescriptions}
 
-ORIGINAL CONTENT REFERENCE:
+SAMPLE Q&A PAIRS FROM INITIAL DATASET:
 ---
-${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '\n[Content truncated for context generation]' : ''}
+${sampleQAPairs}
 ---
 
 VALIDATION CONTEXT REQUIREMENTS:
 
 1. **CORE KNOWLEDGE BASE**
-   - Extract and synthesize key factual information
+   - Extract and synthesize key factual information based on the themes and sample Q&A pairs
    - Identify authoritative statements and data points
    - Note important relationships and dependencies
    - Highlight domain-specific terminology and concepts
@@ -581,13 +595,21 @@ Respond with ONLY a valid JSON object:
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    pairsPerGap: number = 10
+    pairsPerGap: number = 10,
+    identifiedThemes: string[] = []
   ): Promise<SyntheticQAPair[]> {
     console.log(`[OPENROUTER] Generating ${pairsPerGap} synthetic Q&A pairs for gap: ${knowledgeGap.id}`);
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const incorrectCount = Math.max(1, Math.ceil(pairsPerGap * INCORRECT_ANSWER_RATIO));
     const correctCount = pairsPerGap - incorrectCount;
+
+    // Extract key concepts from the knowledge gap for context instead of using full content
+    const keyContexts = [
+      knowledgeGap.description,
+      ...knowledgeGap.relatedConcepts,
+      knowledgeGap.theme
+    ];
 
     const systemPrompt = `You are an expert synthetic Q&A generator specializing in creating high-quality training data for fine-tuning language models.
 
@@ -603,7 +625,7 @@ OBJECTIVE: Generate exactly ${pairsPerGap} synthetic Q&A pairs that specifically
 QUALITY STANDARDS:
 - Questions must be natural, clear, and appropriately challenging
 - Answers must be comprehensive yet concise
-- Content must be factually grounded in the provided reference material
+- Content must be factually grounded in the provided context
 - Incorrect answers should be plausible but clearly wrong to aid model discrimination
 - All pairs must directly address the specified knowledge gap`;
 
@@ -611,6 +633,8 @@ QUALITY STANDARDS:
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
+
+IDENTIFIED THEMES: ${identifiedThemes.join(', ')}
 
 TARGET KNOWLEDGE GAP:
 ID: ${knowledgeGap.id}
@@ -626,11 +650,11 @@ GENERATION REQUIREMENTS:
 - Cover different aspects of the knowledge gap
 - Ensure answers are appropriate for the ${goalConfig?.name} objective
 - Incorrect answers should be plausible but factually wrong
-- All content must be grounded in the reference material
+- All content must align with the identified themes and knowledge gap context
 
-REFERENCE CONTENT:
+KEY CONTEXT ELEMENTS:
 ---
-${combinedContent.substring(0, 6000)}${combinedContent.length > 6000 ? '\n[Content truncated for generation focus]' : ''}
+${keyContexts.join('\n')}
 ---
 
 CRITICAL JSON FORMAT REQUIREMENTS:
@@ -645,7 +669,7 @@ EXAMPLE FORMAT:
 [
   {
     "user": "What is the primary concept discussed in relation to [topic]?",
-    "model": "The primary concept is [detailed answer based on reference content]",
+    "model": "The primary concept is [detailed answer based on context]",
     "isCorrect": true,
     "confidence": 0.9,
     "targetGap": "${knowledgeGap.id}",
@@ -766,7 +790,8 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
           combinedContent,
           gap,
           fineTuningGoal,
-          pairsPerGap
+          pairsPerGap,
+          [] // Empty array for identifiedThemes as it's not passed to this method
         );
 
         allSyntheticPairs.push(...gapPairs);

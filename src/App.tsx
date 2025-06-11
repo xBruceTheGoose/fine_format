@@ -27,7 +27,7 @@ const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
   const [urls, setUrls] = useState<UrlData[]>([]);
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
-  const [enableGapFilling, setEnableGapFilling] = useState(true);
+  const [enableGapFilling, setEnableGapFilling] = useState(false);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   const [currentGoalIndex, setCurrentGoalIndex] = useState(1); // Start with 'knowledge' (index 1)
   const [openRouterReady, setOpenRouterReady] = useState(false);

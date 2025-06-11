@@ -18,9 +18,11 @@
   # These will be set in Netlify dashboard
   GEMINI_API_KEY = ""
   OPENROUTER_API_KEY = ""
+  ENABLE_GAP_FILLING = "true"
 
 # Environment variables for deploy previews
 [context.deploy-preview.environment]
   # These will be set in Netlify dashboard
   GEMINI_API_KEY = ""
   OPENROUTER_API_KEY = ""
+  ENABLE_GAP_FILLING = "true"

@@ -106,7 +106,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     urls: UrlData[],
     enableWebAugmentation: boolean,
     fineTuningGoal: FineTuningGoal,
-    enableGapFilling: boolean = true
+    enableGapFilling: boolean = false
   ) => {
     console.log('[DATASET_GENERATION] Starting dataset generation process');
     
@@ -358,7 +358,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   combinedContent,
                   gap,
                   fineTuningGoal,
-                  maxPairsPerGap
+                  maxPairsPerGap,
+                  identifiedThemes
                 );
                 if (gapPairs.length < minPairsPerGap) {
                   console.warn(`[DATASET_GENERATION] Only ${gapPairs.length} synthetic pairs generated for gap ${gap.id}, less than minimum ${minPairsPerGap}`);

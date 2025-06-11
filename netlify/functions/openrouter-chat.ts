@@ -32,6 +32,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
   }
 
   try {
+    // Check if gap filling is enabled in environment
+    const gapFillingEnabled = process.env.ENABLE_GAP_FILLING === 'true';
+    console.log('[NETLIFY-OPENROUTER] Gap filling enabled:', gapFillingEnabled);
+    
     const { messages, temperature = 0.7, max_tokens = 4000 }: RequestBody = JSON.parse(event.body || '{}');
 
     if (!messages || !Array.isArray(messages)) {
@@ -72,6 +76,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         temperature,
         max_tokens,
         stream: false,
+        top_p: 0.95,
+        frequency_penalty: 0.1,
+        presence_penalty: 0.1,
       }),
     });
 
@@ -104,6 +111,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       };
     }
 
+    // Log successful response
+    console.log('[NETLIFY-OPENROUTER] Request successful, response length:', data.choices[0].message.content.length);
+    
     return {
       statusCode: 200,
       headers: {
@@ -113,6 +123,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({
         content: data.choices[0].message.content,
         usage: data.usage,
+        gapFillingEnabled: process.env.ENABLE_GAP_FILLING === 'true'
       }),
     };
 
