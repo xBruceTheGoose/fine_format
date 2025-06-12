@@ -765,11 +765,10 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       return [];
     }
 
-    // Calculate pairs per gap, ensuring we don't exceed reasonable limits
-    const pairsPerGap = Math.min(15, Math.ceil(targetCount / knowledgeGaps.length)); // Cap at 15 per gap
-    const actualTargetCount = pairsPerGap * knowledgeGaps.length;
+    // Calculate minimum pairs per gap - this is a minimum target, not a maximum limit
+    const minPairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
     
-    console.log(`[OPENROUTER] Generating ${pairsPerGap} pairs per gap for ${knowledgeGaps.length} gaps (${actualTargetCount} total)`);
+    console.log(`[OPENROUTER] Generating at least ${minPairsPerGap} pairs per gap for ${knowledgeGaps.length} gaps (minimum ${targetCount} total)`);
 
     const allSyntheticPairs: SyntheticQAPair[] = [];
     const failedGaps: string[] = [];
@@ -790,7 +789,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
           combinedContent,
           gap,
           fineTuningGoal,
-          pairsPerGap,
+          minPairsPerGap,
           [] // Empty array for identifiedThemes as it's not passed to this method
         );
 

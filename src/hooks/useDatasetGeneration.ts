@@ -332,10 +332,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
             
             // Process each gap individually to prevent token overload
-            // Calculate pairs per gap to reach minimum SYNTHETIC_QA_TARGET_MIN, cap at SYNTHETIC_QA_TARGET_MAX
+            // Calculate minimum pairs per gap to reach SYNTHETIC_QA_TARGET_MIN
             const totalGaps = identifiedGaps.length;
             const minPairsPerGap = Math.ceil(SYNTHETIC_QA_TARGET_MIN / totalGaps);
-            const maxPairsPerGap = Math.ceil(SYNTHETIC_QA_TARGET_MAX / totalGaps);
             let allSyntheticPairs: SyntheticQAPair[] = [];
 
             for (let gapIndex = 0; gapIndex < totalGaps; gapIndex++) {
@@ -352,20 +351,19 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   totalGaps
                 );
 
-                // Try to generate up to maxPairsPerGap, but ensure at least minPairsPerGap
+                // Generate at least minPairsPerGap with no maximum limit
                 let gapPairs: SyntheticQAPair[] = [];
                 gapPairs = await openRouterService.generateSyntheticQAPairsForGap(
                   combinedContent,
                   gap,
                   fineTuningGoal,
-                  maxPairsPerGap,
+                  minPairsPerGap,
                   identifiedThemes
                 );
                 if (gapPairs.length < minPairsPerGap) {
                   console.warn(`[DATASET_GENERATION] Only ${gapPairs.length} synthetic pairs generated for gap ${gap.id}, less than minimum ${minPairsPerGap}`);
                 }
                 // Only enforce a minimum, not a cap: keep all pairs if more are generated
-                // gapPairs = gapPairs.slice(0, Math.max(minPairsPerGap, gapPairs.length));
                 allSyntheticPairs.push(...gapPairs);
                 console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
 
