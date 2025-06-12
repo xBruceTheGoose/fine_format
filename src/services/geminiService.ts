@@ -1,163 +1,69 @@
-import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
 import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair, KnowledgeGap } from '../types';
-import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
+import { FINE_TUNING_GOALS, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class GeminiService {
-  private aiInstances: GoogleGenAI[] = [];
-  private currentKeyIndex = 0;
-  private isInitialized = false;
-  private apiKeys: string[] = [];
-  private keyUsageCount: number[] = [];
-  private keyErrors: number[] = [];
-  private maxErrorsPerKey = 3; // Switch to next key after 3 consecutive errors
+  private baseUrl = '/.netlify/functions/gemini-chat';
 
   constructor() {
-    this.initialize();
-  }
-
-  private initialize(): void {
-    // Try multiple API key names for fallbacks
-    const apiKey1 = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
-    const apiKey2 = import.meta.env.VITE_GEMINI_API_KEY_2;
-    const apiKey3 = import.meta.env.VITE_GEMINI_API_KEY_3;
-    
-    // Collect all available API keys
-    const availableKeys = [apiKey1, apiKey2, apiKey3].filter(key => key?.trim());
-    
-    if (availableKeys.length === 0) {
-      console.error('[GEMINI] ❌ No API keys found in environment variables');
-      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY, VITE_GEMINI_API_KEY_2, VITE_GEMINI_API_KEY_3 in .env.local file');
-      return;
-    }
-
-    try {
-      // Initialize all available API keys
-      this.apiKeys = availableKeys.map(key => key.trim());
-      this.aiInstances = this.apiKeys.map(key => new GoogleGenAI({ apiKey: key }));
-      this.keyUsageCount = new Array(this.apiKeys.length).fill(0);
-      this.keyErrors = new Array(this.apiKeys.length).fill(0);
-      
-      this.isInitialized = true;
-      console.log(`[GEMINI] ✅ Service initialized successfully with ${this.apiKeys.length} API key(s)`);
-      console.log(`[GEMINI] Primary key: ${this.apiKeys[0].substring(0, 15)}...`);
-      
-      if (this.apiKeys.length > 1) {
-        console.log(`[GEMINI] Fallback keys available: ${this.apiKeys.length - 1}`);
-        this.apiKeys.slice(1).forEach((key, index) => {
-          console.log(`[GEMINI] Fallback key ${index + 2}: ${key.substring(0, 15)}...`);
-        });
-      }
-    } catch (error) {
-      console.error('[GEMINI] Failed to initialize GoogleGenAI:', error);
-      this.isInitialized = false;
-    }
+    console.log('[GEMINI] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
-    return this.isInitialized && this.aiInstances.length > 0;
+    // Always ready since we're using Netlify functions
+    return true;
   }
 
-  private getCurrentAI(): GoogleGenAI {
-    return this.aiInstances[this.currentKeyIndex];
-  }
+  private async makeRequest(
+    messages: Array<{ role: string; content?: string; parts?: any[] }>,
+    temperature = 0.7,
+    maxTokens = 4000,
+    tools?: any,
+    config?: any
+  ): Promise<{ content: string; groundingMetadata?: GroundingMetadata; truncated?: boolean }> {
+    console.log('[GEMINI] Making request to Netlify function');
 
-  private switchToNextKey(): boolean {
-    if (this.currentKeyIndex < this.aiInstances.length - 1) {
-      this.currentKeyIndex++;
-      console.log(`[GEMINI] 🔄 Switching to fallback API key ${this.currentKeyIndex + 1}/${this.aiInstances.length}`);
-      console.log(`[GEMINI] New key: ${this.apiKeys[this.currentKeyIndex].substring(0, 15)}...`);
-      
-      // Reset error count for the new key
-      this.keyErrors[this.currentKeyIndex] = 0;
-      return true;
-    }
-    return false;
-  }
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          tools,
+          config
+        }),
+      });
 
-  private async makeRequestWithFallback<T>(
-    requestFn: (ai: GoogleGenAI) => Promise<T>,
-    operation: string
-  ): Promise<T> {
-    let lastError: Error | null = null;
-    const startingKeyIndex = this.currentKeyIndex;
-
-    // Try current key and all fallbacks
-    do {
-      const currentAI = this.getCurrentAI();
-      const keyNumber = this.currentKeyIndex + 1;
-      
-      try {
-        console.log(`[GEMINI] ${operation} - Using API key ${keyNumber}/${this.aiInstances.length} (usage: ${this.keyUsageCount[this.currentKeyIndex]})`);
-        
-        const result = await requestFn(currentAI);
-        
-        // Success - increment usage count and reset error count
-        this.keyUsageCount[this.currentKeyIndex]++;
-        this.keyErrors[this.currentKeyIndex] = 0;
-        
-        console.log(`[GEMINI] ${operation} successful with key ${keyNumber}`);
-        return result;
-
-      } catch (error: any) {
-        lastError = error;
-        this.keyErrors[this.currentKeyIndex]++;
-        
-        console.error(`[GEMINI] ${operation} failed with key ${keyNumber}:`, error.message);
-        console.log(`[GEMINI] Key ${keyNumber} error count: ${this.keyErrors[this.currentKeyIndex]}/${this.maxErrorsPerKey}`);
-
-        // Check if this is a quota/rate limit error
-        const isQuotaError = error.message?.includes('quota') || 
-                           error.message?.includes('rate') || 
-                           error.message?.includes('limit') ||
-                           error.message?.includes('429') ||
-                           error.status === 429;
-
-        const isTokenError = error.message?.includes('token') ||
-                           error.message?.includes('context') ||
-                           error.message?.includes('length');
-
-        if (isQuotaError) {
-          console.warn(`[GEMINI] 🚫 Quota/rate limit detected on key ${keyNumber}, switching immediately`);
-          if (!this.switchToNextKey()) {
-            break; // No more keys available
-          }
-          continue; // Try next key immediately
-        }
-
-        if (isTokenError) {
-          console.warn(`[GEMINI] 📏 Token limit error on key ${keyNumber}, this may be content-related`);
-          // Don't switch keys for token errors, but still try fallbacks
-        }
-
-        // Switch to next key if we've had too many errors with current key
-        if (this.keyErrors[this.currentKeyIndex] >= this.maxErrorsPerKey) {
-          console.warn(`[GEMINI] 🔄 Key ${keyNumber} has ${this.keyErrors[this.currentKeyIndex]} errors, switching to next key`);
-          if (!this.switchToNextKey()) {
-            break; // No more keys available
-          }
-        } else {
-          // Try next key anyway for this request
-          if (!this.switchToNextKey()) {
-            break; // No more keys available
-          }
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
       }
-    } while (this.currentKeyIndex !== startingKeyIndex); // Stop when we've tried all keys
 
-    // All keys failed
-    console.error(`[GEMINI] ❌ ${operation} failed with all ${this.aiInstances.length} API key(s)`);
-    console.error(`[GEMINI] Key usage: ${this.keyUsageCount.map((count, i) => `Key ${i + 1}: ${count} requests, ${this.keyErrors[i]} errors`).join(', ')}`);
-    
-    throw lastError || new Error(`${operation} failed with all available API keys`);
-  }
+      const data = await response.json();
+      
+      if (!data.content) {
+        throw new Error('No content received from Netlify function');
+      }
 
-  public getKeyStatus(): { keyNumber: number; totalKeys: number; usage: number; errors: number } {
-    return {
-      keyNumber: this.currentKeyIndex + 1,
-      totalKeys: this.aiInstances.length,
-      usage: this.keyUsageCount[this.currentKeyIndex],
-      errors: this.keyErrors[this.currentKeyIndex]
-    };
+      console.log('[GEMINI] Request successful, response length:', data.content.length);
+      
+      if (data.truncated) {
+        console.warn('[GEMINI] ⚠️ Response was truncated due to token limit');
+      }
+
+      return {
+        content: data.content,
+        groundingMetadata: data.candidates?.[0]?.groundingMetadata,
+        truncated: data.truncated
+      };
+
+    } catch (error: any) {
+      console.error('[GEMINI] Request failed:', error);
+      throw new Error(`Gemini service request failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -542,22 +448,14 @@ ${combinedContent.substring(0, 18000)}${combinedContent.length > 18000 ? '\n[Con
 
 Generate the theme array now:`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 1200,
-          temperature: 0.3,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' },
+        { role: 'user', content: userPrompt }
+      ], 0.3, 1200, undefined, { responseMimeType: 'application/json' });
 
-      const themes = this.parseJsonResponse(response.text);
+      const themes = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(themes)) {
         throw new Error('Response is not a valid JSON array');
@@ -570,7 +468,10 @@ Generate the theme array now:`;
 
       console.log('[GEMINI] Identified themes:', validThemes);
       return validThemes.slice(0, 8);
-    }, 'Theme identification');
+    } catch (error: any) {
+      console.error('[GEMINI] Theme identification failed:', error);
+      return [];
+    }
   }
 
   private getExampleThemes(goal: FineTuningGoal): string {
@@ -627,22 +528,17 @@ CONTENT TO CLEAN:
 ${textContent}
 ---`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will clean and optimize the text content while preserving all valuable information.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          maxOutputTokens: 10000,
-          temperature: 0.1,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will clean and optimize the text content while preserving all valuable information.' },
+        { role: 'user', content: userPrompt }
+      ], 0.1, 10000);
 
-      return response.text?.trim() || '';
-    }, `Text cleaning for ${fileName}`);
+      return response.content?.trim() || '';
+    } catch (error: any) {
+      throw new Error(`Text cleaning failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   public async cleanBinaryContent(
@@ -660,7 +556,7 @@ EXPERTISE:
 
 OBJECTIVE: Extract all valuable textual content from the binary file and optimize it for fine-tuning dataset generation.`;
 
-    const userParts: Part[] = [
+    const userParts = [
       { text: systemPrompt },
       {
         inlineData: {
@@ -693,18 +589,15 @@ Return only the extracted, optimized text content without commentary. If no mean
       },
     ];
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: userParts }],
-        config: {
-          maxOutputTokens: 10000,
-          temperature: 0.1,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', parts: userParts }
+      ], 0.1, 10000);
 
-      return response.text?.trim() || '';
-    }, `Binary content cleaning for ${fileName}`);
+      return response.content?.trim() || '';
+    } catch (error: any) {
+      throw new Error(`Binary content cleaning failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   public async augmentWithWebSearch(
@@ -769,27 +662,21 @@ ORIGINAL CONTENT TO ENHANCE:
 ${originalContent}
 ---`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          tools: [{ googleSearch: {} }],
-          maxOutputTokens: 12000,
-          temperature: 0.4,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' },
+        { role: 'user', content: userPrompt }
+      ], 0.4, 12000, [{ googleSearch: {} }]);
 
-      const augmentedText = response.text?.trim() || originalContent;
-      const groundingMetadata = response.candidates?.[0]?.groundingMetadata as GroundingMetadata;
+      const augmentedText = response.content?.trim() || originalContent;
+      const groundingMetadata = response.groundingMetadata;
 
       console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
       return { augmentedText, groundingMetadata };
-    }, 'Web augmentation');
+    } catch (error: any) {
+      throw new Error(`Web augmentation failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   private getGoalSpecificWebSearchGuidance(goal: FineTuningGoal): string {
@@ -983,22 +870,14 @@ ${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for
 
 Generate exactly ${batchSize} Q&A pairs now:`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `I understand. I will generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.` }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 8000, // Increased for batch processing
-          temperature: 0.6,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: `I understand. I will generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.` },
+        { role: 'user', content: userPrompt }
+      ], 0.6, 8000, undefined, { responseMimeType: 'application/json' });
 
-      const qaData = this.parseJsonResponse(response.text);
+      const qaData = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(qaData)) {
         throw new Error(`Batch ${batchNumber}: Response is not a valid JSON array`);
@@ -1021,7 +900,11 @@ Generate exactly ${batchSize} Q&A pairs now:`;
       });
 
       return validPairs;
-    }, `Q&A batch ${batchNumber} generation`);
+
+    } catch (error: any) {
+      console.error(`[GEMINI] Batch ${batchNumber} generation failed:`, error);
+      throw new Error(`Batch ${batchNumber} failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   public async identifyKnowledgeGaps(
@@ -1101,22 +984,14 @@ Return a JSON array of knowledge gap objects:
   }
 ]`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 5000,
-          temperature: 0.3,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` },
+        { role: 'user', content: userPrompt }
+      ], 0.3, 5000, undefined, { responseMimeType: 'application/json' });
 
-      const gaps = this.parseJsonResponse(response.text);
+      const gaps = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(gaps)) {
         throw new Error('Response is not a valid JSON array');
@@ -1140,7 +1015,11 @@ Return a JSON array of knowledge gap objects:
       });
 
       return validGaps;
-    }, 'Knowledge gap identification');
+
+    } catch (error: any) {
+      console.error('[GEMINI] Knowledge gap identification failed:', error);
+      throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   public async validateQAPair(
@@ -1203,22 +1082,14 @@ Provide validation assessment as JSON:
   "relevanceScore": number
 }`;
 
-    return this.makeRequestWithFallback(async (ai) => {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 2000,
-          temperature: 0.2,
-        },
-      });
+    try {
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' },
+        { role: 'user', content: userPrompt }
+      ], 0.2, 2000, undefined, { responseMimeType: 'application/json' });
 
-      const validation = this.parseJsonResponse(response.text);
+      const validation = this.parseJsonResponse(response.content);
 
       if (typeof validation.isValid !== 'boolean' ||
           typeof validation.confidence !== 'number' ||
@@ -1236,7 +1107,17 @@ Provide validation assessment as JSON:
         factualAccuracy: Math.max(0, Math.min(1, validation.factualAccuracy)),
         relevanceScore: Math.max(0, Math.min(1, validation.relevanceScore))
       };
-    }, 'Q&A pair validation');
+
+    } catch (error: any) {
+      console.error('[GEMINI] Q&A validation failed:', error);
+      return {
+        isValid: false,
+        confidence: 0.1,
+        reasoning: `Validation failed due to error: ${error.message || 'Unknown error'}`,
+        factualAccuracy: 0.1,
+        relevanceScore: 0.1
+      };
+    }
   }
 
   private shuffleArray<T>(array: T[]): T[] {

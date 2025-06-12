@@ -2,136 +2,54 @@ import { KnowledgeGap, SyntheticQAPair, QAPair, FineTuningGoal, ValidationResult
 import { FINE_TUNING_GOALS, SYNTHETIC_QA_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class OpenRouterService {
-  private apiKey: string | null = null;
-  private isInitialized = false;
-  private baseUrl = 'https://openrouter.ai/api/v1/chat/completions';
+  private baseUrl = '/.netlify/functions/openrouter-chat';
 
   constructor() {
-    this.initialize();
-  }
-
-  private initialize(): void {
-    // Try multiple possible API key names for backward compatibility
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY || 
-                   import.meta.env.OPENROUTER_API_KEY ||
-                   import.meta.env.VITE_OPENROUTER_KEY;
-    
-    // Check if gap filling is enabled in environment
-    const gapFillingEnabled = import.meta.env.VITE_ENABLE_GAP_FILLING === 'true' || 
-                              import.meta.env.ENABLE_GAP_FILLING === 'true';
-    console.log('[OPENROUTER] Gap filling enabled in environment:', gapFillingEnabled);
-    
-    console.log('[OPENROUTER] All environment variables:');
-    console.log('[OPENROUTER] VITE_OPENROUTER_API_KEY:', import.meta.env.VITE_OPENROUTER_API_KEY ? 'Found' : 'Not found');
-    console.log('[OPENROUTER] Found env var: VITE_OPENROUTER_API_KEY =', import.meta.env.VITE_OPENROUTER_API_KEY ? import.meta.env.VITE_OPENROUTER_API_KEY.substring(0, 15) + '...' : 'undefined');
-    
-    if (!apiKey?.trim()) {
-      console.error('[OPENROUTER] ❌ API key not found in any of the expected environment variables');
-      console.error('[OPENROUTER] Expected format in .env.local: VITE_OPENROUTER_API_KEY=sk-or-v1-...');
-      console.error('[OPENROUTER] Make sure to restart the development server after adding the API key');
-      return;
-    }
-
-    this.apiKey = apiKey.trim();
-    this.isInitialized = true;
-    console.log('[OPENROUTER] ✅ Service initialized successfully');
-    console.log('[OPENROUTER] API key found:', this.apiKey.substring(0, 15) + '...');
-    console.log('[OPENROUTER] API key length:', this.apiKey.length);
-    
-    // Validate API key format
-    if (!this.apiKey.startsWith('sk-or-v1-')) {
-      console.warn('[OPENROUTER] ⚠️ API key does not start with expected prefix "sk-or-v1-"');
-    }
+    console.log('[OPENROUTER] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
-    const ready = {
-      hasApiKey: this.apiKey !== null,
-      isInitialized: this.isInitialized,
-      ready: this.isInitialized && this.apiKey !== null
-    };
-    console.log('[OPENROUTER] Service ready check:', ready);
-    return ready.ready;
+    // Always ready since we're using Netlify functions
+    return true;
   }
 
   private async makeRequest(
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
-    maxTokens = 4000, // Increased default to prevent truncation
-    model = 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free' // Use Nvidia Nemotron for better reasoning
+    maxTokens = 4000
   ): Promise<string> {
-    if (!this.apiKey) {
-      throw new Error('OpenRouter service not initialized - API key missing');
-    }
-
-    console.log('[OPENROUTER] Making API request with', messages.length, 'messages, max tokens:', maxTokens, 'model:', model);
-
-    // Create AbortController for timeout - increased for larger responses
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.log('[OPENROUTER] Request timeout after 90 seconds');
-      controller.abort();
-    }, 90000); // 90 second timeout for larger requests
+    console.log('[OPENROUTER] Making request to Netlify function with', messages.length, 'messages, max tokens:', maxTokens);
 
     try {
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Fine Format - AI Dataset Generator',
         },
         body: JSON.stringify({
-          model,
           messages,
           temperature,
-          max_tokens: maxTokens,
-          stream: false,
-          // Add additional parameters to prevent truncation
-          top_p: 0.95, // Slightly more diverse responses
-          frequency_penalty: 0.1, // Reduce repetition
-          presence_penalty: 0.1, // Encourage new topics
+          max_tokens: maxTokens
         }),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[OPENROUTER] API error:', response.status, response.statusText, errorText);
-        throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
       }
 
       const data = await response.json();
       
-      if (!data.choices?.[0]?.message?.content) {
-        console.error('[OPENROUTER] Invalid response structure:', data);
-        throw new Error('Invalid response from OpenRouter API');
+      if (!data.content) {
+        throw new Error('No content received from Netlify function');
       }
 
-      const content = data.choices[0].message.content;
-      console.log('[OPENROUTER] Request successful, response length:', content.length);
-      
-      // Check if response was truncated and warn
-      if (data.choices[0].finish_reason === 'length') {
-        console.warn('[OPENROUTER] ⚠️ Response was truncated due to max_tokens limit. Consider increasing max_tokens.');
-        // Don't throw error, but log warning for monitoring
-      }
-      
-      return content;
+      console.log('[OPENROUTER] Request successful, response length:', data.content.length);
+      return data.content;
 
-    } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error.name === 'AbortError') {
-        console.error('[OPENROUTER] Request aborted due to timeout');
-        throw new Error('OpenRouter API request timed out after 90 seconds');
-      }
-      
+    } catch (error: any) {
       console.error('[OPENROUTER] Request failed:', error);
-      throw error;
+      throw new Error(`OpenRouter service request failed: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -595,21 +513,13 @@ Respond with ONLY a valid JSON object:
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    pairsPerGap: number = 10,
-    identifiedThemes: string[] = []
+    pairsPerGap: number = 10
   ): Promise<SyntheticQAPair[]> {
     console.log(`[OPENROUTER] Generating ${pairsPerGap} synthetic Q&A pairs for gap: ${knowledgeGap.id}`);
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const incorrectCount = Math.max(1, Math.ceil(pairsPerGap * INCORRECT_ANSWER_RATIO));
     const correctCount = pairsPerGap - incorrectCount;
-
-    // Extract key concepts from the knowledge gap for context instead of using full content
-    const keyContexts = [
-      knowledgeGap.description,
-      ...knowledgeGap.relatedConcepts,
-      knowledgeGap.theme
-    ];
 
     const systemPrompt = `You are an expert synthetic Q&A generator specializing in creating high-quality training data for fine-tuning language models.
 
@@ -625,7 +535,7 @@ OBJECTIVE: Generate exactly ${pairsPerGap} synthetic Q&A pairs that specifically
 QUALITY STANDARDS:
 - Questions must be natural, clear, and appropriately challenging
 - Answers must be comprehensive yet concise
-- Content must be factually grounded in the provided context
+- Content must be factually grounded in the provided reference material
 - Incorrect answers should be plausible but clearly wrong to aid model discrimination
 - All pairs must directly address the specified knowledge gap`;
 
@@ -633,8 +543,6 @@ QUALITY STANDARDS:
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
-
-IDENTIFIED THEMES: ${identifiedThemes.join(', ')}
 
 TARGET KNOWLEDGE GAP:
 ID: ${knowledgeGap.id}
@@ -650,11 +558,11 @@ GENERATION REQUIREMENTS:
 - Cover different aspects of the knowledge gap
 - Ensure answers are appropriate for the ${goalConfig?.name} objective
 - Incorrect answers should be plausible but factually wrong
-- All content must align with the identified themes and knowledge gap context
+- All content must be grounded in the reference material
 
-KEY CONTEXT ELEMENTS:
+REFERENCE CONTENT:
 ---
-${keyContexts.join('\n')}
+${combinedContent.substring(0, 6000)}${combinedContent.length > 6000 ? '\n[Content truncated for generation focus]' : ''}
 ---
 
 CRITICAL JSON FORMAT REQUIREMENTS:
@@ -669,7 +577,7 @@ EXAMPLE FORMAT:
 [
   {
     "user": "What is the primary concept discussed in relation to [topic]?",
-    "model": "The primary concept is [detailed answer based on context]",
+    "model": "The primary concept is [detailed answer based on reference content]",
     "isCorrect": true,
     "confidence": 0.9,
     "targetGap": "${knowledgeGap.id}",
@@ -686,7 +594,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.6, 5000, 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free'); // Increased max_tokens
+      ], 0.6, 5000); // Increased max_tokens
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       
@@ -720,7 +628,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
         validationStatus: 'pending' as const,
         targetGap: knowledgeGap.id,
         generationReasoning: pair.generationReasoning || `Generated to address ${knowledgeGap.description}`
-      })); // Only enforce a minimum, not a cap: keep all pairs if more are generated
+      }));
 
       console.log(`[OPENROUTER] Gap ${knowledgeGap.id} generation completed:`, {
         requested: pairsPerGap,
@@ -765,39 +673,43 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       return [];
     }
 
-    // Calculate minimum pairs per gap - this is a minimum target, not a maximum limit
-    const minPairsPerGap = Math.ceil(targetCount / knowledgeGaps.length);
-    
-    console.log(`[OPENROUTER] Generating at least ${minPairsPerGap} pairs per gap for ${knowledgeGaps.length} gaps (minimum ${targetCount} total)`);
+    // Calculate minimum pairs per gap to reach SYNTHETIC_QA_TARGET
+    const totalGaps = knowledgeGaps.length;
+    const minPairsPerGap = Math.max(8, Math.ceil(targetCount / totalGaps)); // Minimum 8 pairs per gap
+    let allSyntheticPairs: SyntheticQAPair[] = [];
 
-    const allSyntheticPairs: SyntheticQAPair[] = [];
+    console.log(`[OPENROUTER] Targeting ${minPairsPerGap} pairs per gap for ${totalGaps} gaps`);
+
     const failedGaps: string[] = [];
 
     // Process each gap individually
-    for (let i = 0; i < knowledgeGaps.length; i++) {
+    for (let i = 0; i < totalGaps; i++) {
       const gap = knowledgeGaps[i];
       
       try {
-        console.log(`[OPENROUTER] Processing gap ${i + 1}/${knowledgeGaps.length}: ${gap.id}`);
+        console.log(`[OPENROUTER] Processing gap ${i + 1}/${totalGaps}: ${gap.id}`);
         
         // Report progress
         if (onProgress) {
-          onProgress(i, knowledgeGaps.length, gap.id);
+          onProgress(i, totalGaps, gap.id);
         }
 
         const gapPairs = await this.generateSyntheticQAPairsForGap(
           combinedContent,
           gap,
           fineTuningGoal,
-          minPairsPerGap,
-          [] // Empty array for identifiedThemes as it's not passed to this method
+          minPairsPerGap
         );
 
-        allSyntheticPairs.push(...gapPairs);
-        console.log(`[OPENROUTER] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
+        if (gapPairs.length > 0) {
+          allSyntheticPairs.push(...gapPairs);
+          console.log(`[OPENROUTER] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
+        } else {
+          console.warn(`[OPENROUTER] No synthetic pairs generated for gap ${gap.id}`);
+        }
 
         // Add a small delay between requests to avoid rate limiting
-        if (i < knowledgeGaps.length - 1) {
+        if (i < totalGaps - 1) {
           await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
         }
 
@@ -810,12 +722,12 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
 
     // Report final progress
     if (onProgress) {
-      onProgress(knowledgeGaps.length, knowledgeGaps.length, 'completed');
+      onProgress(totalGaps, totalGaps, 'completed');
     }
 
     console.log('[OPENROUTER] Individual gap processing completed:', {
-      totalGaps: knowledgeGaps.length,
-      successfulGaps: knowledgeGaps.length - failedGaps.length,
+      totalGaps: totalGaps,
+      successfulGaps: totalGaps - failedGaps.length,
       failedGaps: failedGaps.length,
       totalPairsGenerated: allSyntheticPairs.length,
       correctPairs: allSyntheticPairs.filter(p => p.isCorrect).length,

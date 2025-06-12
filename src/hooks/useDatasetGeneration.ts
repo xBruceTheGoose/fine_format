@@ -1,24 +1,11 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
+import { openRouterService } from '../services/openRouterService';
 import { SYNTHETIC_QA_TARGET } from '../constants';
 
-// Create promises for conditional imports without top-level await
-const openRouterServicePromise = import('../services/openRouterService').then(module => {
-  console.log('[HOOK] OpenRouter service loaded successfully');
-  return module.openRouterService;
-}).catch(error => {
-  console.warn('[HOOK] OpenRouter service not available:', error);
-  return null;
-});
-
-const notificationServicePromise = import('../services/notificationService').then(module => {
-  console.log('[HOOK] Notification service loaded successfully');
-  return module.notificationService;
-}).catch(error => {
-  console.warn('[HOOK] Notification service not available:', error);
-  return null;
-});
+// Import notification service directly since it no longer depends on client-side API keys
+import { notificationService } from '../services/notificationService';
 
 interface UseDatasetGenerationReturn {
   processedData: ProcessedData | null;
@@ -110,10 +97,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   ) => {
     console.log('[DATASET_GENERATION] Starting dataset generation process');
     
-    // Await the service promises to get the actual service instances
-    const openRouterService = await openRouterServicePromise;
-    const notificationService = await notificationServicePromise;
-    
     console.log('[DATASET_GENERATION] Parameters:', {
       fileCount: files.length,
       urlCount: urls.length,
@@ -121,21 +104,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       fineTuningGoal,
       enableGapFilling,
       geminiReady: geminiService.isReady(),
-      openRouterReady: openRouterService?.isReady() || false
+      openRouterReady: openRouterService.isReady()
     });
-
-    if (!geminiService.isReady()) {
-      console.error('[DATASET_GENERATION] Gemini service not ready');
-      setError('Gemini service is not initialized. Please check your API key.');
-      return;
-    }
-
-    // Check if gap filling is enabled but OpenRouter is not ready
-    if (enableGapFilling && (!openRouterService || !openRouterService.isReady())) {
-      console.warn('[DATASET_GENERATION] Gap filling enabled but OpenRouter service not ready');
-      setError('Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server.');
-      return;
-    }
 
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
     const readyUrls = urls.filter(u => u.status === 'fetched' && u.rawContent.trim());
@@ -153,13 +123,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     }
 
     // Request notification permission and show initial notification
-    if (notificationService) {
-      try {
-        console.log('[DATASET_GENERATION] Requesting notification permission');
-        await notificationService.requestPermission();
-      } catch (error) {
-        console.warn('[DATASET_GENERATION] Failed to request notification permission:', error);
-      }
+    try {
+      console.log('[DATASET_GENERATION] Requesting notification permission');
+      await notificationService.requestPermission();
+    } catch (error) {
+      console.warn('[DATASET_GENERATION] Failed to request notification permission:', error);
     }
     
     setIsProcessing(true);
@@ -176,7 +144,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       // Calculate total steps based on enabled features
       let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
-      if (enableGapFilling && openRouterService?.isReady()) totalSteps += 4; // +4 for gap analysis, validation context, synthetic generation, validation
+      if (enableGapFilling) totalSteps += 4; // +4 for gap analysis, validation context, synthetic generation, validation
       
       console.log('[DATASET_GENERATION] Total steps calculated:', totalSteps);
       
@@ -315,9 +283,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Step 5-8: Knowledge gap filling - ADDITIONAL synthetic pairs (if enabled and OpenRouter is available)
-      if (enableGapFilling && openRouterService?.isReady()) {
-        console.log('[DATASET_GENERATION] Knowledge gap filling enabled and OpenRouter ready');
+      // Step 5-8: Knowledge gap filling - ADDITIONAL synthetic pairs (if enabled)
+      if (enableGapFilling) {
+        console.log('[DATASET_GENERATION] Knowledge gap filling enabled');
         try {
           // Step 5: Identify knowledge gaps using Gemini analysis of the generated dataset
           currentStepIndex++;
@@ -488,8 +456,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           // Continue with original Q&A pairs only
           console.warn('[DATASET_GENERATION] Proceeding with original dataset only due to gap filling error');
         }
-      } else if (enableGapFilling && !openRouterService?.isReady()) {
-        console.warn('[DATASET_GENERATION] Knowledge gap filling requested but OpenRouter service not available');
       } else {
         console.log('[DATASET_GENERATION] Knowledge gap filling disabled');
       }
@@ -520,7 +486,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         syntheticPairCount,
         validatedPairCount,
         identifiedGaps,
-        gapFillingEnabled: enableGapFilling && openRouterService?.isReady()
+        gapFillingEnabled: enableGapFilling
       });
 
       setProgress(100);
@@ -542,13 +508,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
 
       // Send completion notification
-      if (notificationService) {
-        try {
-          console.log('[DATASET_GENERATION] Sending completion notification');
-          await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
-        } catch (error) {
-          console.warn('[DATASET_GENERATION] Failed to send completion notification:', error);
-        }
+      try {
+        console.log('[DATASET_GENERATION] Sending completion notification');
+        await notificationService.sendCompletionNotification(finalQAPairs.length, correctAnswers.length, incorrectAnswers.length);
+      } catch (error) {
+        console.warn('[DATASET_GENERATION] Failed to send completion notification:', error);
       }
 
     } catch (err) {
@@ -562,13 +526,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setTotalEstimatedTime(null);
 
       // Send error notification
-      if (notificationService) {
-        try {
-          console.log('[DATASET_GENERATION] Sending error notification');
-          await notificationService.sendErrorNotification(errorMessage);
-        } catch (error) {
-          console.warn('[DATASET_GENERATION] Failed to send error notification:', error);
-        }
+      try {
+        console.log('[DATASET_GENERATION] Sending error notification');
+        await notificationService.sendErrorNotification(errorMessage);
+      } catch (error) {
+        console.warn('[DATASET_GENERATION] Failed to send error notification:', error);
       }
     } finally {
       console.log('[DATASET_GENERATION] Process finished, setting isProcessing to false');
