@@ -758,13 +758,12 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     // Calculate an initial estimate for totalBatches for logging and a safe upper limit
     const initialEstimatedBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
-    // Allow a few extra attempts beyond the initial estimate, e.g., 3 more or 1.5x, whichever is larger.
-    // Let's go with +3 for simplicity and to avoid very small increments if QA_PAIR_COUNT_TARGET is small.
-    const MAX_BATCHES_TO_ATTEMPT = initialEstimatedBatches + 3;
+    // Allow more attempts for better coverage - increased from 3 to 6 extra attempts
+    const MAX_BATCHES_TO_ATTEMPT = initialEstimatedBatches + 6;
 
     console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
 
-    while (batch < MAX_BATCHES_TO_ATTEMPT) {
+    while (batch < MAX_BATCHES_TO_ATTEMPT && allPairs.length < QA_PAIR_COUNT_TARGET) {
       const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
       
       console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
@@ -782,6 +781,13 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
         allPairs.push(...batchPairs);
         console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
 
+        // Stop if we've reached our target
+        if (allPairs.length >= QA_PAIR_COUNT_TARGET) {
+          console.log(`[GEMINI] Target of ${QA_PAIR_COUNT_TARGET} pairs reached with ${allPairs.length} pairs`);
+          break;
+        }
+
+        // Stop if batch returned 0 pairs after reaching initial estimated batches
         if (batchPairs.length === 0 && batch >= initialEstimatedBatches) {
           console.log("[GEMINI] Current batch returned 0 pairs after reaching initial estimated batches. Stopping further generation in this phase.");
           break;
@@ -793,7 +799,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
         }
       } catch (error: any) {
         console.error(`[GEMINI] Batch ${batch + 1} failed:`, error);
-        // Decide if to break or continue on batch failure. For now, let's continue to allow subsequent batches.
+        // Continue with next batch on failure
       }
       batch++;
     }
@@ -1079,7 +1085,7 @@ OBJECTIVE: Validate the accuracy, relevance, and quality of a synthetic Q&A pair
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-SYNTHETIC Q&A PAIR TO VALIDATE:
+SYNTHETIC Q&A PAIR:
 Question: "${syntheticPair.user}"
 Answer: "${syntheticPair.model}"
 Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}

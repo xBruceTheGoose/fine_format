@@ -130,6 +130,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       return;
     }
 
+    // Check if gap filling is enabled but OpenRouter is not ready
+    if (enableGapFilling && (!openRouterService || !openRouterService.isReady())) {
+      console.warn('[DATASET_GENERATION] Gap filling enabled but OpenRouter service not ready');
+      setError('Knowledge gap filling requires OpenRouter API access. Please set VITE_OPENROUTER_API_KEY in .env.local and restart the development server.');
+      return;
+    }
+
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
     const readyUrls = urls.filter(u => u.status === 'fetched' && u.rawContent.trim());
     
@@ -296,10 +303,10 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         console.log('[DATASET_GENERATION] Web augmentation disabled');
       }
 
-      // Step 4: Generate initial 100 Q&A pairs from original content
+      // Step 4: Generate initial Q&A pairs from original content
       currentStepIndex++;
       console.log('[DATASET_GENERATION] Starting initial Q&A generation');
-      updateProgress(currentStepIndex, totalSteps, 'Generating 100 comprehensive Q&A pairs from original content...', totalSources, enableWebAugmentation, enableGapFilling);
+      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs from content...', totalSources, enableWebAugmentation, enableGapFilling);
       const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
       console.log(`[DATASET_GENERATION] Generated ${initialQAPairs.length} initial Q&A pairs`);
 
@@ -308,7 +315,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Step 5-8: Knowledge gap filling - ADDITIONAL 50-100 synthetic pairs (if enabled and OpenRouter is available)
+      // Step 5-8: Knowledge gap filling - ADDITIONAL synthetic pairs (if enabled and OpenRouter is available)
       if (enableGapFilling && openRouterService?.isReady()) {
         console.log('[DATASET_GENERATION] Knowledge gap filling enabled and OpenRouter ready');
         try {
@@ -326,16 +333,40 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           console.log(`[DATASET_GENERATION] Identified ${identifiedGaps.length} knowledge gaps:`, identifiedGaps.map(g => g.id));
 
           if (identifiedGaps.length > 0) {
-            // Step 6: Generate ADDITIONAL synthetic Q&A pairs using OpenRouter (individual gap processing)
+            // Step 6: Generate validation context for efficient validation
+            currentStepIndex++;
+            console.log('[DATASET_GENERATION] Generating validation context for synthetic pairs');
+            updateProgress(currentStepIndex, totalSteps, 'Generating validation context for efficient Q&A validation...', totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
+            
+            let validationContext = '';
+            try {
+              validationContext = await openRouterService.generateValidationContext(
+                combinedContent,
+                identifiedThemes,
+                initialQAPairs,
+                identifiedGaps,
+                [], // Empty array for now, will be populated with synthetic pairs
+                fineTuningGoal
+              );
+              console.log(`[DATASET_GENERATION] Validation context generated, length: ${validationContext.length} characters`);
+            } catch (contextError: any) {
+              console.error('[DATASET_GENERATION] Failed to generate validation context:', contextError);
+              // Fallback to using original content for validation
+              validationContext = combinedContent.substring(0, 4000);
+              console.log('[DATASET_GENERATION] Using fallback validation context from original content');
+            }
+
+            // Step 7: Generate synthetic Q&A pairs using OpenRouter (individual gap processing)
             currentStepIndex++;
             console.log(`[DATASET_GENERATION] Starting individual synthetic Q&A generation for ${identifiedGaps.length} gaps`);
             updateProgress(currentStepIndex, totalSteps, `Generating synthetic Q&A pairs for ${identifiedGaps.length} knowledge gaps...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
             
-            // Process each gap individually to prevent token overload
-            // Calculate minimum pairs per gap to reach SYNTHETIC_QA_TARGET_MIN
+            // Calculate minimum pairs per gap to reach SYNTHETIC_QA_TARGET
             const totalGaps = identifiedGaps.length;
-            const minPairsPerGap = Math.ceil(SYNTHETIC_QA_TARGET_MIN / totalGaps);
+            const minPairsPerGap = Math.max(8, Math.ceil(SYNTHETIC_QA_TARGET / totalGaps)); // Minimum 8 pairs per gap
             let allSyntheticPairs: SyntheticQAPair[] = [];
+
+            console.log(`[DATASET_GENERATION] Targeting ${minPairsPerGap} pairs per gap for ${totalGaps} gaps`);
 
             for (let gapIndex = 0; gapIndex < totalGaps; gapIndex++) {
               const gap = identifiedGaps[gapIndex];
@@ -351,21 +382,20 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   totalGaps
                 );
 
-                // Generate at least minPairsPerGap with no maximum limit
-                let gapPairs: SyntheticQAPair[] = [];
-                gapPairs = await openRouterService.generateSyntheticQAPairsForGap(
+                // Generate synthetic pairs for this gap
+                const gapPairs = await openRouterService.generateSyntheticQAPairsForGap(
                   combinedContent,
                   gap,
                   fineTuningGoal,
-                  minPairsPerGap,
-                  identifiedThemes
+                  minPairsPerGap
                 );
-                if (gapPairs.length < minPairsPerGap) {
-                  console.warn(`[DATASET_GENERATION] Only ${gapPairs.length} synthetic pairs generated for gap ${gap.id}, less than minimum ${minPairsPerGap}`);
+
+                if (gapPairs.length > 0) {
+                  allSyntheticPairs.push(...gapPairs);
+                  console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
+                } else {
+                  console.warn(`[DATASET_GENERATION] No synthetic pairs generated for gap ${gap.id}`);
                 }
-                // Only enforce a minimum, not a cap: keep all pairs if more are generated
-                allSyntheticPairs.push(...gapPairs);
-                console.log(`[DATASET_GENERATION] Successfully generated ${gapPairs.length} pairs for gap ${gap.id}`);
 
                 // Add a small delay between requests to avoid rate limiting
                 if (gapIndex < totalGaps - 1) {
@@ -380,31 +410,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             syntheticPairCount = allSyntheticPairs.length;
             console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${totalGaps} gaps`);
 
-            // Step 7: Generate validation context for efficient validation
-            let validationContext = '';
-            if (allSyntheticPairs.length > 0) {
-              currentStepIndex++;
-              console.log('[DATASET_GENERATION] Generating validation context for synthetic pairs');
-              updateProgress(currentStepIndex, totalSteps, 'Generating validation context for efficient Q&A validation...', totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
-              
-              try {
-                validationContext = await openRouterService.generateValidationContext(
-                  combinedContent,
-                  identifiedThemes,
-                  initialQAPairs,
-                  identifiedGaps,
-                  allSyntheticPairs,
-                  fineTuningGoal
-                );
-                console.log(`[DATASET_GENERATION] Validation context generated, length: ${validationContext.length} characters`);
-              } catch (contextError: any) {
-                console.error('[DATASET_GENERATION] Failed to generate validation context:', contextError);
-                // Fallback to using original content for validation
-                validationContext = combinedContent.substring(0, 4000);
-                console.log('[DATASET_GENERATION] Using fallback validation context from original content');
-              }
-            }
-
             // Step 8: Cross-validate synthetic pairs using the validation context
             if (allSyntheticPairs.length > 0 && validationContext) {
               currentStepIndex++;
@@ -412,7 +417,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
               updateProgress(currentStepIndex, totalSteps, `Validating ${allSyntheticPairs.length} synthetic Q&A pairs using generated context...`, totalSources, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
               
               const validatedPairs: QAPair[] = [];
-              const validationThreshold = 0.7; // Minimum confidence for inclusion
+              const validationThreshold = 0.6; // Lowered threshold for better inclusion rate
 
               for (let i = 0; i < allSyntheticPairs.length; i++) {
                 console.log(`[DATASET_GENERATION] Validating synthetic pair ${i + 1}/${allSyntheticPairs.length} using validation context`);
@@ -469,9 +474,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                 }
               }
 
-              // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original 100)
+              // Add validated synthetic pairs to the final dataset (ADDITIONAL to the original)
               finalQAPairs = [...initialQAPairs, ...validatedPairs];
               console.log(`[DATASET_GENERATION] Final dataset: ${initialQAPairs.length} original + ${validatedPairs.length} validated synthetic = ${finalQAPairs.length} total pairs`);
+            } else {
+              console.log('[DATASET_GENERATION] No synthetic pairs to validate or no validation context available');
             }
           } else {
             console.log('[DATASET_GENERATION] No knowledge gaps identified, skipping synthetic generation');
@@ -479,7 +486,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         } catch (gapFillingError) {
           console.error('[DATASET_GENERATION] Knowledge gap filling failed:', gapFillingError);
           // Continue with original Q&A pairs only
-          setError('Knowledge gap filling encountered issues, proceeding with original dataset.');
+          console.warn('[DATASET_GENERATION] Proceeding with original dataset only due to gap filling error');
         }
       } else if (enableGapFilling && !openRouterService?.isReady()) {
         console.warn('[DATASET_GENERATION] Knowledge gap filling requested but OpenRouter service not available');
