@@ -166,7 +166,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         try {
           let cleanedText: string;
           
-          console.log(`[DATASET_GENERATION] File ${file.file.name} is binary: ${file.isBinary}`);
+          console.log(`[DATASET_GENERATION] File ${file.file.name} is binary: ${file.isBinary}, content length: ${file.rawContent.length}`);
+          
           if (file.isBinary) {
             console.log(`[DATASET_GENERATION] Cleaning binary content for ${file.file.name}`);
             cleanedText = await geminiService.cleanBinaryContent(
@@ -183,12 +184,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           }
 
           console.log(`[DATASET_GENERATION] Cleaned text length for ${file.file.name}: ${cleanedText.length} characters`);
-          if (cleanedText.trim()) {
+          
+          if (cleanedText && cleanedText.trim().length > 50) { // Minimum 50 characters for meaningful content
             cleanedTexts.push(cleanedText);
             successfulSources.push(file.file.name);
             console.log(`[DATASET_GENERATION] Successfully processed file: ${file.file.name}`);
           } else {
-            console.warn(`[DATASET_GENERATION] No content extracted from file: ${file.file.name}`);
+            console.warn(`[DATASET_GENERATION] Insufficient content extracted from file: ${file.file.name} (${cleanedText?.length || 0} characters)`);
           }
         } catch (err) {
           console.error(`[DATASET_GENERATION] Failed to process ${file.file.name}:`, err);
@@ -205,19 +207,20 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`, totalSources, enableWebAugmentation, enableGapFilling);
 
         try {
-          console.log(`[DATASET_GENERATION] Cleaning text content for URL: ${urlData.url}`);
+          console.log(`[DATASET_GENERATION] Cleaning text content for URL: ${urlData.url}, content length: ${urlData.rawContent.length}`);
           const cleanedText = await geminiService.cleanTextContent(
             urlData.rawContent,
             urlData.title || urlData.url
           );
 
           console.log(`[DATASET_GENERATION] Cleaned text length for ${urlData.url}: ${cleanedText.length} characters`);
-          if (cleanedText.trim()) {
+          
+          if (cleanedText && cleanedText.trim().length > 50) { // Minimum 50 characters for meaningful content
             cleanedTexts.push(cleanedText);
             successfulSources.push(urlData.title || urlData.url);
             console.log(`[DATASET_GENERATION] Successfully processed URL: ${urlData.url}`);
           } else {
-            console.warn(`[DATASET_GENERATION] No content extracted from URL: ${urlData.url}`);
+            console.warn(`[DATASET_GENERATION] Insufficient content extracted from URL: ${urlData.url} (${cleanedText?.length || 0} characters)`);
           }
         } catch (err) {
           console.error(`[DATASET_GENERATION] Failed to process ${urlData.url}:`, err);
@@ -226,9 +229,20 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       }
 
       console.log('[DATASET_GENERATION] Content processing complete. Successful sources:', successfulSources.length);
+      console.log('[DATASET_GENERATION] Cleaned texts:', cleanedTexts.map(text => `${text.length} chars`));
+      
       if (cleanedTexts.length === 0) {
         console.error('[DATASET_GENERATION] No content extracted from any sources');
-        throw new Error('No content could be extracted from any sources.');
+        throw new Error('No content could be extracted from any sources. Please check that your files contain readable text or that URLs are accessible.');
+      }
+
+      // Validate that we have sufficient content
+      const totalContentLength = cleanedTexts.reduce((sum, text) => sum + text.length, 0);
+      console.log(`[DATASET_GENERATION] Total content length: ${totalContentLength} characters`);
+      
+      if (totalContentLength < 500) {
+        console.error('[DATASET_GENERATION] Insufficient total content length');
+        throw new Error(`Insufficient content for dataset generation. Total content: ${totalContentLength} characters (minimum 500 required).`);
       }
 
       // Step 2: Combine content and identify themes
