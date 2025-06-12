@@ -3,27 +3,50 @@ import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQ
 import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
 
 class GeminiService {
-  private ai: GoogleGenAI | null = null;
+  private aiInstances: GoogleGenAI[] = [];
+  private currentKeyIndex = 0;
   private isInitialized = false;
+  private apiKeys: string[] = [];
+  private keyUsageCount: number[] = [];
+  private keyErrors: number[] = [];
+  private maxErrorsPerKey = 3; // Switch to next key after 3 consecutive errors
 
   constructor() {
     this.initialize();
   }
 
   private initialize(): void {
-    // Try both possible API key names for backward compatibility
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+    // Try multiple API key names for fallbacks
+    const apiKey1 = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
+    const apiKey2 = import.meta.env.VITE_GEMINI_API_KEY_2;
+    const apiKey3 = import.meta.env.VITE_GEMINI_API_KEY_3;
     
-    if (!apiKey?.trim()) {
-      console.error('[GEMINI] API key not found in environment variables');
-      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY in .env.local file');
+    // Collect all available API keys
+    const availableKeys = [apiKey1, apiKey2, apiKey3].filter(key => key?.trim());
+    
+    if (availableKeys.length === 0) {
+      console.error('[GEMINI] ❌ No API keys found in environment variables');
+      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY, VITE_GEMINI_API_KEY_2, VITE_GEMINI_API_KEY_3 in .env.local file');
       return;
     }
 
     try {
-      this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
+      // Initialize all available API keys
+      this.apiKeys = availableKeys.map(key => key.trim());
+      this.aiInstances = this.apiKeys.map(key => new GoogleGenAI({ apiKey: key }));
+      this.keyUsageCount = new Array(this.apiKeys.length).fill(0);
+      this.keyErrors = new Array(this.apiKeys.length).fill(0);
+      
       this.isInitialized = true;
-      console.log('[GEMINI] ✅ Service initialized successfully');
+      console.log(`[GEMINI] ✅ Service initialized successfully with ${this.apiKeys.length} API key(s)`);
+      console.log(`[GEMINI] Primary key: ${this.apiKeys[0].substring(0, 15)}...`);
+      
+      if (this.apiKeys.length > 1) {
+        console.log(`[GEMINI] Fallback keys available: ${this.apiKeys.length - 1}`);
+        this.apiKeys.slice(1).forEach((key, index) => {
+          console.log(`[GEMINI] Fallback key ${index + 2}: ${key.substring(0, 15)}...`);
+        });
+      }
     } catch (error) {
       console.error('[GEMINI] Failed to initialize GoogleGenAI:', error);
       this.isInitialized = false;
@@ -31,7 +54,110 @@ class GeminiService {
   }
 
   public isReady(): boolean {
-    return this.isInitialized && this.ai !== null;
+    return this.isInitialized && this.aiInstances.length > 0;
+  }
+
+  private getCurrentAI(): GoogleGenAI {
+    return this.aiInstances[this.currentKeyIndex];
+  }
+
+  private switchToNextKey(): boolean {
+    if (this.currentKeyIndex < this.aiInstances.length - 1) {
+      this.currentKeyIndex++;
+      console.log(`[GEMINI] 🔄 Switching to fallback API key ${this.currentKeyIndex + 1}/${this.aiInstances.length}`);
+      console.log(`[GEMINI] New key: ${this.apiKeys[this.currentKeyIndex].substring(0, 15)}...`);
+      
+      // Reset error count for the new key
+      this.keyErrors[this.currentKeyIndex] = 0;
+      return true;
+    }
+    return false;
+  }
+
+  private async makeRequestWithFallback<T>(
+    requestFn: (ai: GoogleGenAI) => Promise<T>,
+    operation: string
+  ): Promise<T> {
+    let lastError: Error | null = null;
+    const startingKeyIndex = this.currentKeyIndex;
+
+    // Try current key and all fallbacks
+    do {
+      const currentAI = this.getCurrentAI();
+      const keyNumber = this.currentKeyIndex + 1;
+      
+      try {
+        console.log(`[GEMINI] ${operation} - Using API key ${keyNumber}/${this.aiInstances.length} (usage: ${this.keyUsageCount[this.currentKeyIndex]})`);
+        
+        const result = await requestFn(currentAI);
+        
+        // Success - increment usage count and reset error count
+        this.keyUsageCount[this.currentKeyIndex]++;
+        this.keyErrors[this.currentKeyIndex] = 0;
+        
+        console.log(`[GEMINI] ${operation} successful with key ${keyNumber}`);
+        return result;
+
+      } catch (error: any) {
+        lastError = error;
+        this.keyErrors[this.currentKeyIndex]++;
+        
+        console.error(`[GEMINI] ${operation} failed with key ${keyNumber}:`, error.message);
+        console.log(`[GEMINI] Key ${keyNumber} error count: ${this.keyErrors[this.currentKeyIndex]}/${this.maxErrorsPerKey}`);
+
+        // Check if this is a quota/rate limit error
+        const isQuotaError = error.message?.includes('quota') || 
+                           error.message?.includes('rate') || 
+                           error.message?.includes('limit') ||
+                           error.message?.includes('429') ||
+                           error.status === 429;
+
+        const isTokenError = error.message?.includes('token') ||
+                           error.message?.includes('context') ||
+                           error.message?.includes('length');
+
+        if (isQuotaError) {
+          console.warn(`[GEMINI] 🚫 Quota/rate limit detected on key ${keyNumber}, switching immediately`);
+          if (!this.switchToNextKey()) {
+            break; // No more keys available
+          }
+          continue; // Try next key immediately
+        }
+
+        if (isTokenError) {
+          console.warn(`[GEMINI] 📏 Token limit error on key ${keyNumber}, this may be content-related`);
+          // Don't switch keys for token errors, but still try fallbacks
+        }
+
+        // Switch to next key if we've had too many errors with current key
+        if (this.keyErrors[this.currentKeyIndex] >= this.maxErrorsPerKey) {
+          console.warn(`[GEMINI] 🔄 Key ${keyNumber} has ${this.keyErrors[this.currentKeyIndex]} errors, switching to next key`);
+          if (!this.switchToNextKey()) {
+            break; // No more keys available
+          }
+        } else {
+          // Try next key anyway for this request
+          if (!this.switchToNextKey()) {
+            break; // No more keys available
+          }
+        }
+      }
+    } while (this.currentKeyIndex !== startingKeyIndex); // Stop when we've tried all keys
+
+    // All keys failed
+    console.error(`[GEMINI] ❌ ${operation} failed with all ${this.aiInstances.length} API key(s)`);
+    console.error(`[GEMINI] Key usage: ${this.keyUsageCount.map((count, i) => `Key ${i + 1}: ${count} requests, ${this.keyErrors[i]} errors`).join(', ')}`);
+    
+    throw lastError || new Error(`${operation} failed with all available API keys`);
+  }
+
+  public getKeyStatus(): { keyNumber: number; totalKeys: number; usage: number; errors: number } {
+    return {
+      keyNumber: this.currentKeyIndex + 1,
+      totalKeys: this.aiInstances.length,
+      usage: this.keyUsageCount[this.currentKeyIndex],
+      errors: this.keyErrors[this.currentKeyIndex]
+    };
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -374,10 +500,6 @@ QUALITY STANDARDS:
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
@@ -420,8 +542,8 @@ ${combinedContent.substring(0, 18000)}${combinedContent.length > 18000 ? '\n[Con
 
 Generate the theme array now:`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -448,10 +570,7 @@ Generate the theme array now:`;
 
       console.log('[GEMINI] Identified themes:', validThemes);
       return validThemes.slice(0, 8);
-    } catch (error: any) {
-      console.error('[GEMINI] Theme identification failed:', error);
-      return [];
-    }
+    }, 'Theme identification');
   }
 
   private getExampleThemes(goal: FineTuningGoal): string {
@@ -471,10 +590,6 @@ Generate the theme array now:`;
     textContent: string,
     fileName: string
   ): Promise<string> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const systemPrompt = `You are an expert content processor specializing in text cleaning and optimization for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -512,8 +627,8 @@ CONTENT TO CLEAN:
 ${textContent}
 ---`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -527,9 +642,7 @@ ${textContent}
       });
 
       return response.text?.trim() || '';
-    } catch (error: any) {
-      throw new Error(`Text cleaning failed: ${error.message || 'Unknown error'}`);
-    }
+    }, `Text cleaning for ${fileName}`);
   }
 
   public async cleanBinaryContent(
@@ -537,10 +650,6 @@ ${textContent}
     mimeType: string,
     fileName: string
   ): Promise<string> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const systemPrompt = `You are an expert document processor specializing in extracting and optimizing text content from binary files for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -584,8 +693,8 @@ Return only the extracted, optimized text content without commentary. If no mean
       },
     ];
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [{ role: 'user', parts: userParts }],
         config: {
@@ -595,9 +704,7 @@ Return only the extracted, optimized text content without commentary. If no mean
       });
 
       return response.text?.trim() || '';
-    } catch (error: any) {
-      throw new Error(`Binary content cleaning failed: ${error.message || 'Unknown error'}`);
-    }
+    }, `Binary content cleaning for ${fileName}`);
   }
 
   public async augmentWithWebSearch(
@@ -605,10 +712,6 @@ Return only the extracted, optimized text content without commentary. If no mean
     identifiedThemes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = identifiedThemes.length > 0 
       ? `\n\nPRIORITY THEMES FOR WEB SEARCH: ${identifiedThemes.join(', ')}`
@@ -666,8 +769,8 @@ ORIGINAL CONTENT TO ENHANCE:
 ${originalContent}
 ---`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -686,9 +789,7 @@ ${originalContent}
 
       console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
       return { augmentedText, groundingMetadata };
-    } catch (error: any) {
-      throw new Error(`Web augmentation failed: ${error.message || 'Unknown error'}`);
-    }
+    }, 'Web augmentation');
   }
 
   private getGoalSpecificWebSearchGuidance(goal: FineTuningGoal): string {
@@ -736,10 +837,6 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     if (content.length < 200) {
       throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
     }
@@ -886,8 +983,8 @@ ${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for
 
 Generate exactly ${batchSize} Q&A pairs now:`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -924,11 +1021,7 @@ Generate exactly ${batchSize} Q&A pairs now:`;
       });
 
       return validPairs;
-
-    } catch (error: any) {
-      console.error(`[GEMINI] Batch ${batchNumber} generation failed:`, error);
-      throw new Error(`Batch ${batchNumber} failed: ${error.message || 'Unknown error'}`);
-    }
+    }, `Q&A batch ${batchNumber} generation`);
   }
 
   public async identifyKnowledgeGaps(
@@ -937,10 +1030,6 @@ Generate exactly ${batchSize} Q&A pairs now:`;
     generatedQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const existingQuestions = generatedQAPairs.map(pair => pair.user);
     const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
@@ -1012,8 +1101,8 @@ Return a JSON array of knowledge gap objects:
   }
 ]`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -1051,11 +1140,7 @@ Return a JSON array of knowledge gap objects:
       });
 
       return validGaps;
-
-    } catch (error: any) {
-      console.error('[GEMINI] Knowledge gap identification failed:', error);
-      throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
-    }
+    }, 'Knowledge gap identification');
   }
 
   public async validateQAPair(
@@ -1063,10 +1148,6 @@ Return a JSON array of knowledge gap objects:
     referenceContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<ValidationResult> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
     const systemPrompt = `You are an expert fact-checker and Q&A validator specializing in fine-tuning dataset quality assurance.
@@ -1122,8 +1203,8 @@ Provide validation assessment as JSON:
   "relevanceScore": number
 }`;
 
-    try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
+    return this.makeRequestWithFallback(async (ai) => {
+      const response: GenerateContentResponse = await ai.models.generateContent({
         model: GEMINI_MODEL,
         contents: [
           { role: 'user', parts: [{ text: systemPrompt }] },
@@ -1155,17 +1236,7 @@ Provide validation assessment as JSON:
         factualAccuracy: Math.max(0, Math.min(1, validation.factualAccuracy)),
         relevanceScore: Math.max(0, Math.min(1, validation.relevanceScore))
       };
-
-    } catch (error: any) {
-      console.error('[GEMINI] Q&A validation failed:', error);
-      return {
-        isValid: false,
-        confidence: 0.1,
-        reasoning: `Validation failed due to error: ${error.message || 'Unknown error'}`,
-        factualAccuracy: 0.1,
-        relevanceScore: 0.1
-      };
-    }
+    }, 'Q&A pair validation');
   }
 
   private shuffleArray<T>(array: T[]): T[] {
