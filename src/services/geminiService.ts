@@ -556,16 +556,7 @@ EXPERTISE:
 
 OBJECTIVE: Extract all valuable textual content from the binary file and optimize it for fine-tuning dataset generation.`;
 
-    const userParts = [
-      { text: systemPrompt },
-      {
-        inlineData: {
-          mimeType,
-          data: base64Data,
-        },
-      },
-      {
-        text: `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
+    const userPrompt = `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
 
 EXTRACTION REQUIREMENTS:
 1. Extract all relevant textual content comprehensively
@@ -585,13 +576,23 @@ CONTENT PRIORITIES:
 - Technical specifications and data
 - Procedural instructions and guidelines
 
-Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`,
-      },
-    ];
+Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`;
 
     try {
       const response = await this.makeRequest([
-        { role: 'user', parts: userParts }
+        { 
+          role: 'user', 
+          parts: [
+            { text: systemPrompt },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+            { text: userPrompt }
+          ]
+        }
       ], 0.1, 10000);
 
       return response.content?.trim() || '';

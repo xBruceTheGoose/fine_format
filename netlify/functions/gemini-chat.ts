@@ -84,11 +84,22 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         const { GoogleGenAI } = await import('@google/genai');
         const ai = new GoogleGenAI({ apiKey });
         
-        // Convert messages to Gemini format
-        const contents = messages.map((msg: any) => ({
-          role: msg.role === 'assistant' ? 'model' : 'user',
-          parts: Array.isArray(msg.parts) ? msg.parts : [{ text: msg.content }]
-        }));
+        // Convert messages to Gemini format - handle both content and parts
+        const contents = messages.map((msg: any) => {
+          if (msg.parts) {
+            // Message already has parts (for binary content)
+            return {
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: msg.parts
+            };
+          } else {
+            // Regular text message
+            return {
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: msg.content }]
+            };
+          }
+        });
 
         const requestConfig: any = {
           model: 'gemini-2.0-flash-exp',
@@ -112,7 +123,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           maxOutputTokens: requestConfig.config.maxOutputTokens,
           temperature: requestConfig.config.temperature,
           hasTools: !!tools,
-          messageCount: contents.length
+          messageCount: contents.length,
+          hasBinaryContent: contents.some(c => c.parts?.some(p => p.inlineData))
         });
 
         const response = await ai.models.generateContent(requestConfig);
