@@ -26,7 +26,8 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 export const ACCEPTED_FILE_EXTENSIONS = '.txt,.md,.html,.jsonl,.pdf,.docx';
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
-export const BINARY_FILE_SIZE_LIMIT = 8 * 1024 * 1024; // 8MB for binary files (PDFs, DOCX)
+// CRITICAL: Much smaller limit for binary files to prevent Netlify function timeouts
+export const BINARY_FILE_SIZE_LIMIT = 200 * 1024; // 200KB for binary files (was 8MB)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

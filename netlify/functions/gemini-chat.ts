@@ -67,7 +67,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     console.log(`[NETLIFY-GEMINI] Available API keys: ${apiKeys.length}`);
 
-    // Check for binary content and validate size
+    // Check for binary content and validate size BEFORE processing
     const hasBinaryContent = messages.some(msg => 
       msg.parts?.some(part => part.inlineData)
     );
@@ -90,8 +90,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       console.log(`[NETLIFY-GEMINI] Total binary content size: ${Math.round(totalBinarySize / 1024)} KB`);
 
-      // Limit binary content to 10MB to prevent function timeouts
-      const MAX_BINARY_SIZE = 10 * 1024 * 1024; // 10MB
+      // CRITICAL: Much more restrictive limits to prevent 502 errors
+      const MAX_BINARY_SIZE = 150 * 1024; // 150KB to prevent timeouts (was 10MB)
       if (totalBinarySize > MAX_BINARY_SIZE) {
         return {
           statusCode: 413,
@@ -100,8 +100,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ 
-            error: `Binary content too large: ${Math.round(totalBinarySize / 1024 / 1024)}MB. Maximum allowed: ${MAX_BINARY_SIZE / 1024 / 1024}MB`,
-            details: 'Please use smaller files or split large documents into smaller sections.'
+            error: `Binary content too large: ${Math.round(totalBinarySize / 1024)}KB. Maximum allowed: ${MAX_BINARY_SIZE / 1024}KB`,
+            details: 'Large files cause Netlify function timeouts. Please use smaller files or split content.',
+            type: 'PAYLOAD_TOO_LARGE'
           }),
         };
       }
@@ -164,10 +165,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           hasBinaryContent
         });
 
-        // Set timeout for binary content processing
-        const timeoutMs = hasBinaryContent ? 45000 : 30000; // 45s for binary, 30s for text
+        // CRITICAL: Realistic timeout for Netlify functions
+        const timeoutMs = hasBinaryContent ? 20000 : 15000; // 20s for binary, 15s for text (was 45s/30s)
         const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout')), timeoutMs);
+          setTimeout(() => reject(new Error('Request timeout - Netlify function limit exceeded')), timeoutMs);
         });
 
         const requestPromise = ai.models.generateContent(requestConfig);
@@ -205,6 +206,13 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       } catch (error: any) {
         lastError = error;
         console.error(`[NETLIFY-GEMINI] Key ${keyNumber} failed:`, error.message);
+        console.error(`[NETLIFY-GEMINI] Error details:`, {
+          name: error.name,
+          message: error.message,
+          stack: error.stack?.substring(0, 500),
+          status: error.status,
+          code: error.code
+        });
         
         // Check if this is a quota/rate limit error
         const isQuotaError = error.message?.includes('quota') || 
@@ -236,23 +244,38 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // All keys failed
     console.error(`[NETLIFY-GEMINI] All ${apiKeys.length} API keys failed`);
+    console.error(`[NETLIFY-GEMINI] Final error details:`, {
+      message: lastError?.message,
+      name: lastError?.name,
+      status: lastError?.status,
+      code: lastError?.code
+    });
     
-    // Enhanced error handling
+    // Enhanced error handling with specific error types
     let errorMessage = 'Failed to process request with all available API keys';
     let statusCode = 500;
+    let errorType = 'UNKNOWN_ERROR';
     
-    if (lastError?.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - content may be too large or complex';
+    if (lastError?.message?.includes('timeout') || lastError?.message?.includes('TIMEOUT')) {
+      errorMessage = 'Request timed out - content may be too large or complex for Netlify function processing';
       statusCode = 408;
-    } else if (lastError?.message?.includes('quota')) {
+      errorType = 'TIMEOUT_ERROR';
+    } else if (lastError?.message?.includes('quota') || lastError?.status === 429) {
       errorMessage = 'All API keys have exceeded quota - please try again later';
       statusCode = 429;
-    } else if (lastError?.message?.includes('invalid')) {
-      errorMessage = 'Invalid request format';
+      errorType = 'QUOTA_EXCEEDED';
+    } else if (lastError?.message?.includes('invalid') || lastError?.status === 400) {
+      errorMessage = 'Invalid request format or content';
       statusCode = 400;
+      errorType = 'INVALID_REQUEST';
     } else if (lastError?.message?.includes('SAFETY')) {
       errorMessage = 'Content was blocked by safety filters';
       statusCode = 400;
+      errorType = 'SAFETY_FILTER';
+    } else if (lastError?.status === 502 || lastError?.status === 503) {
+      errorMessage = 'Gemini API service temporarily unavailable';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
     }
     
     return {
@@ -264,8 +287,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({ 
         error: errorMessage,
         details: lastError?.message,
-        type: lastError?.name || 'UnknownError',
-        keysAttempted: apiKeys.length
+        type: errorType,
+        keysAttempted: apiKeys.length,
+        suggestion: hasBinaryContent ? 'Try using a smaller file (under 150KB) or convert to text format' : 'Please try again or contact support'
       }),
     };
 
@@ -281,7 +305,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({ 
         error: 'Failed to process request',
         details: error.message,
-        type: error.name || 'UnknownError'
+        type: error.name || 'UnknownError',
+        stack: error.stack?.substring(0, 200)
       }),
     };
   }

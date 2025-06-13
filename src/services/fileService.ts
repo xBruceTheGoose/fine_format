@@ -23,24 +23,26 @@ export class FileService {
       status: 'reading',
     };
 
-    // Check file size - be more restrictive for binary files
-    const maxSize = this.isBinaryFileByExtension(file.name) || SUPPORTED_BINARY_MIME_TYPES.includes(mimeType) 
-      ? Math.min(FILE_SIZE_LIMIT, 8 * 1024 * 1024) // 8MB max for binary files
+    // CRITICAL: Much more restrictive size limits for binary files to prevent 502 errors
+    const isBinaryFile = SUPPORTED_BINARY_MIME_TYPES.includes(mimeType) || 
+                        this.isBinaryFileByExtension(file.name);
+    
+    // Drastically reduce binary file size limit to prevent Netlify function failures
+    const maxSize = isBinaryFile 
+      ? 200 * 1024 // 200KB max for binary files (was 8MB)
       : FILE_SIZE_LIMIT; // 5MB for text files
 
     if (file.size > maxSize) {
       return {
         ...baseFileData,
         status: 'failed',
-        error: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is ${maxSize / 1024 / 1024}MB for ${this.isBinaryFileByExtension(file.name) ? 'binary' : 'text'} files.`,
+        error: `File too large (${(file.size / 1024).toFixed(1)}KB). Maximum size is ${maxSize / 1024}KB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files. Large files cause processing timeouts.`,
       };
     }
 
     // Check if file type is supported
     const isTextFile = SUPPORTED_TEXT_MIME_TYPES.includes(mimeType) || 
                       this.isTextFileByExtension(file.name);
-    const isBinaryFile = SUPPORTED_BINARY_MIME_TYPES.includes(mimeType) || 
-                        this.isBinaryFileByExtension(file.name);
 
     if (!isTextFile && !isBinaryFile) {
       return {
@@ -72,12 +74,21 @@ export class FileService {
       } else {
         const content = await this.readAsBase64(file);
         
-        // Validate base64 content
+        // Validate base64 content and size
         if (!content || content.length < 100) {
           return {
             ...baseFileData,
             status: 'failed',
             error: 'File appears to be empty or corrupted.',
+          };
+        }
+
+        // Additional check for base64 size (this is what gets sent to API)
+        if (content.length > 300 * 1024) { // 300KB base64 limit
+          return {
+            ...baseFileData,
+            status: 'failed',
+            error: 'File too large for processing. Base64 encoding exceeds API limits.',
           };
         }
 
