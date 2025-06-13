@@ -67,9 +67,46 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     console.log(`[NETLIFY-GEMINI] Available API keys: ${apiKeys.length}`);
 
-    // Simple rate limiting (in production, use Redis or similar)
-    const clientIP = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
-    
+    // Check for binary content and validate size
+    const hasBinaryContent = messages.some(msg => 
+      msg.parts?.some(part => part.inlineData)
+    );
+
+    if (hasBinaryContent) {
+      console.log('[NETLIFY-GEMINI] Binary content detected, validating size...');
+      
+      // Calculate total binary data size
+      let totalBinarySize = 0;
+      for (const msg of messages) {
+        if (msg.parts) {
+          for (const part of msg.parts) {
+            if (part.inlineData?.data) {
+              // Base64 data size (approximate original size = base64 length * 0.75)
+              totalBinarySize += part.inlineData.data.length * 0.75;
+            }
+          }
+        }
+      }
+
+      console.log(`[NETLIFY-GEMINI] Total binary content size: ${Math.round(totalBinarySize / 1024)} KB`);
+
+      // Limit binary content to 10MB to prevent function timeouts
+      const MAX_BINARY_SIZE = 10 * 1024 * 1024; // 10MB
+      if (totalBinarySize > MAX_BINARY_SIZE) {
+        return {
+          statusCode: 413,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            error: `Binary content too large: ${Math.round(totalBinarySize / 1024 / 1024)}MB. Maximum allowed: ${MAX_BINARY_SIZE / 1024 / 1024}MB`,
+            details: 'Please use smaller files or split large documents into smaller sections.'
+          }),
+        };
+      }
+    }
+
     let lastError: any = null;
     
     // Try each API key in sequence
@@ -105,7 +142,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           model: 'gemini-2.0-flash-exp',
           contents,
           config: {
-            maxOutputTokens: Math.min(max_tokens || 4000, 20000), // Increased max limit
+            maxOutputTokens: Math.min(max_tokens || 4000, 20000),
             temperature: temperature || 0.7,
             topP: 0.95,
             topK: 40,
@@ -124,10 +161,17 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           temperature: requestConfig.config.temperature,
           hasTools: !!tools,
           messageCount: contents.length,
-          hasBinaryContent: contents.some(c => c.parts?.some(p => p.inlineData))
+          hasBinaryContent
         });
 
-        const response = await ai.models.generateContent(requestConfig);
+        // Set timeout for binary content processing
+        const timeoutMs = hasBinaryContent ? 45000 : 30000; // 45s for binary, 30s for text
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout')), timeoutMs);
+        });
+
+        const requestPromise = ai.models.generateContent(requestConfig);
+        const response = await Promise.race([requestPromise, timeoutPromise]);
         
         if (!response.text) {
           console.error(`[NETLIFY-GEMINI] No response text from Gemini API with key ${keyNumber}`);
@@ -169,9 +213,19 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
                            error.message?.includes('429') ||
                            error.status === 429;
 
+        // Check if this is a timeout error
+        const isTimeoutError = error.message?.includes('timeout') ||
+                              error.message?.includes('TIMEOUT') ||
+                              error.code === 'ETIMEDOUT';
+
         if (isQuotaError) {
           console.warn(`[NETLIFY-GEMINI] Quota/rate limit detected on key ${keyNumber}, trying next key`);
           continue; // Try next key immediately for quota errors
+        }
+
+        if (isTimeoutError) {
+          console.warn(`[NETLIFY-GEMINI] Timeout detected on key ${keyNumber}, trying next key`);
+          continue; // Try next key for timeout errors
         }
 
         // For other errors, still try the next key but log the error type
@@ -188,13 +242,16 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     let statusCode = 500;
     
     if (lastError?.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - content may be too large';
+      errorMessage = 'Request timed out - content may be too large or complex';
       statusCode = 408;
     } else if (lastError?.message?.includes('quota')) {
       errorMessage = 'All API keys have exceeded quota - please try again later';
       statusCode = 429;
     } else if (lastError?.message?.includes('invalid')) {
       errorMessage = 'Invalid request format';
+      statusCode = 400;
+    } else if (lastError?.message?.includes('SAFETY')) {
+      errorMessage = 'Content was blocked by safety filters';
       statusCode = 400;
     }
     

@@ -194,6 +194,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           }
         } catch (err) {
           console.error(`[DATASET_GENERATION] Failed to process ${file.file.name}:`, err);
+          
+          // Provide more specific error messages
+          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+          if (errorMessage.includes('timeout')) {
+            console.warn(`[DATASET_GENERATION] File ${file.file.name} processing timed out - file may be too large or complex`);
+          } else if (errorMessage.includes('502')) {
+            console.warn(`[DATASET_GENERATION] Server error processing ${file.file.name} - retrying with smaller chunks may help`);
+          }
           // Continue with other sources
         }
       }

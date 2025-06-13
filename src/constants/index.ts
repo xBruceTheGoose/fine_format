@@ -25,7 +25,8 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 
 export const ACCEPTED_FILE_EXTENSIONS = '.txt,.md,.html,.jsonl,.pdf,.docx';
 
-export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
+export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
+export const BINARY_FILE_SIZE_LIMIT = 8 * 1024 * 1024; // 8MB for binary files (PDFs, DOCX)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {
