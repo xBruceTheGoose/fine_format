@@ -92,20 +92,17 @@ const App: React.FC = () => {
         {/* Header */}
         <header className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
-            <Zap size={56} className="text-primary mr-4 animate-pulse" style={{
+            <Zap size={40} className="text-primary mr-4 animate-pulse" style={{
               filter: 'drop-shadow(0 0 5px #00FF41)',
               animation: 'glow-pulse 2s ease-in-out infinite alternate'
             }} />
             <h1 
-              className="text-5xl md:text-7xl font-black glitch font-mono tracking-wider"
-              data-text="FINE FORMAT"
+              className="text-3xl md:text-4xl font-bold font-mono tracking-wide text-primary"
               style={{
-                color: '#00FF41',
-                textShadow: '0 0 2px #00FF41, 0 0 4px #00FF41',
-                letterSpacing: '0.1em'
+                textShadow: '0 0 3px #00FF41'
               }}
             >
-              FINE FORMAT
+              Upload your knowledgebase. Download your dataset.
             </h1>
           </div>
           <div className="relative">
@@ -309,7 +306,7 @@ const App: React.FC = () => {
                         disabled={isProcessing}
                         className={`px-4 py-2 rounded-full font-mono font-semibold text-sm transition-all duration-300 ${
                           isSelected 
-                            ? 'bg-accent/20 text-accent border-2  border-accent shadow-neon' 
+                            ? 'bg-accent/20 text-accent border-2 border-accent shadow-neon' 
                             : 'bg-surface/30 text-muted border border-border hover:border-accent/50 hover:text-accent'
                         }`}
                         style={{
