@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
 import { openRouterService } from '../services/openRouterService';
+import { buildshipService } from '../services/buildshipService';
 import { SYNTHETIC_QA_TARGET } from '../constants';
 
 // Import notification service directly since it no longer depends on client-side API keys
@@ -34,8 +35,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   }, []);
 
   const calculateTimeEstimates = useCallback((currentStepIndex: number, totalSteps: number, sourceCount: number, enableWebAugmentation: boolean, enableGapFilling: boolean, gapCount: number = 0) => {
-    // Base time estimates in seconds
-    const baseTimePerSource = 15; // 15 seconds per file/URL
+    // Updated time estimates with BuildShip preprocessing
+    const buildshipProcessingTime = 30; // 30 seconds for BuildShip preprocessing
     const themeAnalysisTime = 20; // 20 seconds for theme identification
     const qaGenerationTime = 45; // 45 seconds for Q&A generation
     const webAugmentationTime = 60; // 60 seconds for web search and augmentation
@@ -44,7 +45,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     const syntheticGenerationTimePerGap = 15; // 15 seconds per gap (individual requests)
     const validationTimePerPair = 3; // 3 seconds per validation (faster individual validation)
 
-    let totalTime = sourceCount * baseTimePerSource + themeAnalysisTime + qaGenerationTime;
+    let totalTime = buildshipProcessingTime + themeAnalysisTime + qaGenerationTime;
     
     if (enableWebAugmentation) {
       totalTime += webAugmentationTime;
@@ -95,7 +96,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     fineTuningGoal: FineTuningGoal,
     enableGapFilling: boolean = false
   ) => {
-    console.log('[DATASET_GENERATION] Starting dataset generation process');
+    console.log('[DATASET_GENERATION] Starting dataset generation process with BuildShip preprocessing');
     
     console.log('[DATASET_GENERATION] Parameters:', {
       fileCount: files.length,
@@ -103,6 +104,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       enableWebAugmentation,
       fineTuningGoal,
       enableGapFilling,
+      buildshipReady: buildshipService.isReady(),
       geminiReady: geminiService.isReady(),
       openRouterReady: openRouterService.isReady()
     });
@@ -119,6 +121,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     if (readyFiles.length === 0 && readyUrls.length === 0) {
       console.error('[DATASET_GENERATION] No valid sources ready');
       setError('No valid files or URLs ready for processing.');
+      return;
+    }
+
+    // Check BuildShip service availability
+    if (!buildshipService.isReady()) {
+      console.error('[DATASET_GENERATION] BuildShip service not ready');
+      setError('BuildShip preprocessing service is not configured. Please check your API key.');
       return;
     }
 
@@ -142,7 +151,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       const totalSources = readyFiles.length + readyUrls.length;
       
       // Calculate total steps based on enabled features
-      let totalSteps = totalSources + 2; // Base: source processing + theme identification + Q&A generation
+      let totalSteps = 3; // Base: BuildShip preprocessing + theme identification + Q&A generation
       if (enableWebAugmentation) totalSteps += 2; // +2 for web search steps
       if (enableGapFilling) totalSteps += 4; // +4 for gap analysis, validation context, synthetic generation, validation
       
@@ -150,98 +159,25 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       let currentStepIndex = 0;
 
-      // Step 1: Clean content from files and URLs
-      console.log('[DATASET_GENERATION] Starting content processing phase');
-      const cleanedTexts: string[] = [];
-      const successfulSources: string[] = [];
-
-      // Process files
-      console.log('[DATASET_GENERATION] Processing files:', readyFiles.length);
-      for (let i = 0; i < readyFiles.length; i++) {
-        const file = readyFiles[i];
-        currentStepIndex++;
-        console.log(`[DATASET_GENERATION] Processing file ${i + 1}/${readyFiles.length}: ${file.file.name}`);
-        updateProgress(currentStepIndex, totalSteps, `Processing file: ${file.file.name}`, totalSources, enableWebAugmentation, enableGapFilling);
-
-        try {
-          let cleanedText: string;
-          
-          console.log(`[DATASET_GENERATION] File ${file.file.name} is binary: ${file.isBinary}, content length: ${file.rawContent.length}`);
-          
-          if (file.isBinary) {
-            console.log(`[DATASET_GENERATION] Cleaning binary content for ${file.file.name}`);
-            cleanedText = await geminiService.cleanBinaryContent(
-              file.rawContent,
-              file.mimeType,
-              file.file.name
-            );
-          } else {
-            console.log(`[DATASET_GENERATION] Cleaning text content for ${file.file.name}`);
-            cleanedText = await geminiService.cleanTextContent(
-              file.rawContent,
-              file.file.name
-            );
-          }
-
-          console.log(`[DATASET_GENERATION] Cleaned text length for ${file.file.name}: ${cleanedText.length} characters`);
-          
-          if (cleanedText && cleanedText.trim().length > 50) { // Minimum 50 characters for meaningful content
-            cleanedTexts.push(cleanedText);
-            successfulSources.push(file.file.name);
-            console.log(`[DATASET_GENERATION] Successfully processed file: ${file.file.name}`);
-          } else {
-            console.warn(`[DATASET_GENERATION] Insufficient content extracted from file: ${file.file.name} (${cleanedText?.length || 0} characters)`);
-          }
-        } catch (err) {
-          console.error(`[DATASET_GENERATION] Failed to process ${file.file.name}:`, err);
-          
-          // Provide more specific error messages
-          const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-          if (errorMessage.includes('timeout')) {
-            console.warn(`[DATASET_GENERATION] File ${file.file.name} processing timed out - file may be too large or complex`);
-          } else if (errorMessage.includes('502')) {
-            console.warn(`[DATASET_GENERATION] Server error processing ${file.file.name} - retrying with smaller chunks may help`);
-          }
-          // Continue with other sources
+      // Step 1: Preprocess content using BuildShip
+      currentStepIndex++;
+      console.log('[DATASET_GENERATION] Starting BuildShip preprocessing');
+      updateProgress(currentStepIndex, totalSteps, 'Preprocessing files and URLs with BuildShip...', totalSources, enableWebAugmentation, enableGapFilling);
+      
+      const cleanedTexts = await buildshipService.preprocessContent(
+        readyFiles,
+        readyUrls,
+        (current, total, item) => {
+          updateProgress(currentStepIndex, totalSteps, `Preprocessing: ${item}`, totalSources, enableWebAugmentation, enableGapFilling);
         }
-      }
+      );
 
-      // Process URLs
-      console.log('[DATASET_GENERATION] Processing URLs:', readyUrls.length);
-      for (let i = 0; i < readyUrls.length; i++) {
-        const urlData = readyUrls[i];
-        currentStepIndex++;
-        console.log(`[DATASET_GENERATION] Processing URL ${i + 1}/${readyUrls.length}: ${urlData.url}`);
-        updateProgress(currentStepIndex, totalSteps, `Processing URL: ${urlData.title || urlData.url}`, totalSources, enableWebAugmentation, enableGapFilling);
-
-        try {
-          console.log(`[DATASET_GENERATION] Cleaning text content for URL: ${urlData.url}, content length: ${urlData.rawContent.length}`);
-          const cleanedText = await geminiService.cleanTextContent(
-            urlData.rawContent,
-            urlData.title || urlData.url
-          );
-
-          console.log(`[DATASET_GENERATION] Cleaned text length for ${urlData.url}: ${cleanedText.length} characters`);
-          
-          if (cleanedText && cleanedText.trim().length > 50) { // Minimum 50 characters for meaningful content
-            cleanedTexts.push(cleanedText);
-            successfulSources.push(urlData.title || urlData.url);
-            console.log(`[DATASET_GENERATION] Successfully processed URL: ${urlData.url}`);
-          } else {
-            console.warn(`[DATASET_GENERATION] Insufficient content extracted from URL: ${urlData.url} (${cleanedText?.length || 0} characters)`);
-          }
-        } catch (err) {
-          console.error(`[DATASET_GENERATION] Failed to process ${urlData.url}:`, err);
-          // Continue with other sources
-        }
-      }
-
-      console.log('[DATASET_GENERATION] Content processing complete. Successful sources:', successfulSources.length);
-      console.log('[DATASET_GENERATION] Cleaned texts:', cleanedTexts.map(text => `${text.length} chars`));
+      console.log('[DATASET_GENERATION] BuildShip preprocessing complete. Cleaned texts:', cleanedTexts.length);
+      console.log('[DATASET_GENERATION] Cleaned text lengths:', cleanedTexts.map(text => `${text.length} chars`));
       
       if (cleanedTexts.length === 0) {
-        console.error('[DATASET_GENERATION] No content extracted from any sources');
-        throw new Error('No content could be extracted from any sources. Please check that your files contain readable text or that URLs are accessible.');
+        console.error('[DATASET_GENERATION] No content extracted from BuildShip preprocessing');
+        throw new Error('No content could be extracted from any sources during preprocessing.');
       }
 
       // Validate that we have sufficient content
@@ -259,7 +195,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       currentStepIndex++;
       console.log('[DATASET_GENERATION] Starting theme identification');
-      updateProgress(currentStepIndex, totalSteps, 'Analyzing content and identifying key themes...', totalSources, enableWebAugmentation, enableGapFilling);
+      updateProgress(currentStepIndex, totalSteps, 'Analyzing preprocessed content and identifying key themes...', totalSources, enableWebAugmentation, enableGapFilling);
       
       const identifiedThemes = await geminiService.identifyThemes(combinedContent, fineTuningGoal);
       console.log('[DATASET_GENERATION] Identified themes:', identifiedThemes);
@@ -278,7 +214,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
         currentStepIndex++;
         console.log('[DATASET_GENERATION] Starting web augmentation');
-        updateProgress(currentStepIndex, totalSteps, 'Enhancing content with targeted web research...', totalSources, enableWebAugmentation, enableGapFilling);
+        updateProgress(currentStepIndex, totalSteps, 'Enhancing preprocessed content with targeted web research...', totalSources, enableWebAugmentation, enableGapFilling);
         try {
           const result = await geminiService.augmentWithWebSearch(combinedContent, identifiedThemes, fineTuningGoal);
           combinedContent = result.augmentedText;
@@ -287,16 +223,16 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           console.log('[DATASET_GENERATION] Web augmentation successful. New content length:', combinedContent.length);
         } catch (err) {
           console.error('[DATASET_GENERATION] Web augmentation failed:', err);
-          setError('Web augmentation failed, proceeding with original content.');
+          setError('Web augmentation failed, proceeding with preprocessed content.');
         }
       } else {
         console.log('[DATASET_GENERATION] Web augmentation disabled');
       }
 
-      // Step 4: Generate initial Q&A pairs from original content
+      // Step 4: Generate initial Q&A pairs from preprocessed content
       currentStepIndex++;
       console.log('[DATASET_GENERATION] Starting initial Q&A generation');
-      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs from content...', totalSources, enableWebAugmentation, enableGapFilling);
+      updateProgress(currentStepIndex, totalSteps, 'Generating comprehensive Q&A pairs from preprocessed content...', totalSources, enableWebAugmentation, enableGapFilling);
       const initialQAPairs = await geminiService.generateQAPairs(combinedContent, identifiedThemes, fineTuningGoal);
       console.log(`[DATASET_GENERATION] Generated ${initialQAPairs.length} initial Q&A pairs`);
 
@@ -514,13 +450,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setProgress(100);
       setEstimatedTimeRemaining(0);
       
-      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from original content`;
+      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from preprocessed content`;
       
       if (validatedPairCount > 0) {
         completionMessage += ` + ${validatedPairCount} validated synthetic pairs`;
       }
       
-      completionMessage += ` (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${successfulSources.length} sources!`;
+      completionMessage += ` (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${totalSources} sources using BuildShip preprocessing!`;
       
       if (identifiedGaps.length > 0) {
         completionMessage += ` Knowledge gaps addressed: ${identifiedGaps.length}.`;
