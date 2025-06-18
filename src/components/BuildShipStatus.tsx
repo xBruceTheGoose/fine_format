@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, AlertCircle, Settings } from 'lucide-react';
+import { CheckCircle, XCircle, AlertCircle, Settings, Server } from 'lucide-react';
 import { buildshipService } from '../services/buildshipService';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
@@ -31,10 +31,6 @@ export const BuildShipStatus: React.FC = () => {
   };
 
   const getStatusIcon = () => {
-    if (!status.hasApiKey) {
-      return <XCircle size={20} className="text-error" style={{ filter: 'drop-shadow(0 0 3px #dc1aff)' }} />;
-    }
-    
     if (connectionTestResult === true) {
       return <CheckCircle size={20} className="text-success" style={{ filter: 'drop-shadow(0 0 3px #00FF41)' }} />;
     }
@@ -51,10 +47,6 @@ export const BuildShipStatus: React.FC = () => {
   };
 
   const getStatusText = () => {
-    if (!status.hasApiKey) {
-      return 'API Key Missing';
-    }
-    
     if (connectionTestResult === true) {
       return 'Connected & Ready';
     }
@@ -67,11 +59,10 @@ export const BuildShipStatus: React.FC = () => {
       return 'Ready (Untested)';
     }
     
-    return 'Not Configured';
+    return 'Not Available';
   };
 
   const getStatusColor = () => {
-    if (!status.hasApiKey) return 'text-error';
     if (connectionTestResult === true) return 'text-success';
     if (connectionTestResult === false) return 'text-error';
     if (status.ready) return 'text-warning';
@@ -83,11 +74,11 @@ export const BuildShipStatus: React.FC = () => {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Settings size={24} className="text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+            <Server size={24} className="text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
             <h3 className="text-lg font-bold text-primary font-mono tracking-wide">
               BUILDSHIP PREPROCESSING
             </h3>
-            <Tooltip content="BuildShip handles advanced preprocessing of files and URLs, including binary content extraction, text cleaning, and content optimization before passing to Gemini for Q&A generation." />
+            <Tooltip content="BuildShip handles advanced preprocessing of files and URLs server-side, including binary content extraction, text cleaning, and content optimization before passing to Gemini for Q&A generation." />
           </div>
           <div className="flex items-center space-x-2">
             {getStatusIcon()}
@@ -102,10 +93,8 @@ export const BuildShipStatus: React.FC = () => {
           {/* Status Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm font-mono">
             <div>
-              <span className="text-accent font-bold">API Key:</span>
-              <span className={`ml-2 ${status.hasApiKey ? 'text-success' : 'text-error'}`}>
-                {status.hasApiKey ? 'Configured' : 'Missing'}
-              </span>
+              <span className="text-accent font-bold">API Security:</span>
+              <span className="ml-2 text-success">Server-Side</span>
             </div>
             <div>
               <span className="text-accent font-bold">Service:</span>
@@ -118,7 +107,7 @@ export const BuildShipStatus: React.FC = () => {
           {/* Endpoint Information */}
           <div className="p-3 bg-surface/30 rounded-lg border border-border">
             <div className="text-xs font-mono text-muted">
-              <span className="text-accent font-bold">Endpoint:</span>
+              <span className="text-accent font-bold">Netlify Function:</span>
               <br />
               <span className="break-all">{status.endpoint}</span>
             </div>
@@ -158,34 +147,34 @@ export const BuildShipStatus: React.FC = () => {
                 }`}>
                   {connectionTestResult 
                     ? 'Connection successful! BuildShip preprocessing is ready.' 
-                    : 'Connection failed. Please check your API key and endpoint configuration.'
+                    : 'Connection failed. Please check server configuration.'
                   }
                 </span>
               </div>
             </div>
           )}
 
-          {/* Configuration Instructions */}
-          {!status.hasApiKey && (
-            <div className="cyber-alert-warning border-warning p-4 rounded-lg">
-              <div className="text-warning font-bold font-mono mb-2">
-                CONFIGURATION REQUIRED
-              </div>
-              <div className="text-foreground font-mono text-sm leading-relaxed">
-                To enable BuildShip preprocessing:
-                <br />
-                1. Add <span className="text-accent">VITE_BUILDSHIP_API_KEY</span> to your environment variables
-                <br />
-                2. Restart the development server
-                <br />
-                3. Test the connection using the button above
-              </div>
-            </div>
-          )}
-
-          {/* Benefits Information */}
+          {/* Server-Side Security Notice */}
           <div className="cyber-alert-info border-accent p-4 rounded-lg">
             <div className="text-accent font-bold font-mono mb-2">
+              🔒 SECURE SERVER-SIDE PROCESSING
+            </div>
+            <div className="text-foreground font-mono text-sm leading-relaxed">
+              • API keys are securely stored server-side
+              <br />
+              • No sensitive credentials exposed to client
+              <br />
+              • Multiple API key fallback support
+              <br />
+              • Enhanced error handling and retry logic
+              <br />
+              • Consistent with other LLM API integrations
+            </div>
+          </div>
+
+          {/* Benefits Information */}
+          <div className="cyber-alert-success border-success p-4 rounded-lg">
+            <div className="text-success font-bold font-mono mb-2">
               BUILDSHIP BENEFITS
             </div>
             <div className="text-foreground font-mono text-sm leading-relaxed">
@@ -198,6 +187,8 @@ export const BuildShipStatus: React.FC = () => {
               • Reduced client-side processing load
               <br />
               • Better handling of large files and complex content
+              <br />
+              • Server-side security and reliability
             </div>
           </div>
         </div>

@@ -13,25 +13,22 @@ interface BuildShipSource {
 
 interface BuildShipResponse {
   cleanedTexts?: string[];
+  sourcesProcessed?: number;
+  keyUsed?: number;
   error?: string;
   message?: string;
 }
 
 class BuildShipService {
-  private readonly endpoint = 'https://hiqtqy.buildship.run/executeWorkflow/D4xRme6b2N2vus1EeTNX/dd746df2-b48b-4b8a-9b63-7347c80ceeda';
-  private readonly apiKey: string;
+  private baseUrl = '/.netlify/functions/buildship-preprocess';
 
   constructor() {
-    // Get API key from environment variables
-    this.apiKey = import.meta.env.VITE_BUILDSHIP_API_KEY || '';
-    
-    if (!this.apiKey) {
-      console.warn('[BUILDSHIP] API key not found. Set VITE_BUILDSHIP_API_KEY in your environment variables.');
-    }
+    console.log('[BUILDSHIP] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
-    return !!this.apiKey && this.apiKey.trim().length > 0;
+    // Always ready since we're using Netlify functions
+    return true;
   }
 
   /**
@@ -42,12 +39,8 @@ class BuildShipService {
     urls: UrlData[],
     onProgress?: (current: number, total: number, item: string) => void
   ): Promise<string[]> {
-    console.log('[BUILDSHIP] Starting content preprocessing');
+    console.log('[BUILDSHIP] Starting content preprocessing via Netlify function');
     
-    if (!this.isReady()) {
-      throw new Error('BuildShip service not ready. Please check API key configuration.');
-    }
-
     // Validate inputs
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
     const readyUrls = urls.filter(u => u.status === 'fetched' && u.rawContent.trim());
@@ -126,57 +119,44 @@ class BuildShipService {
   }
 
   /**
-   * Call the BuildShip endpoint with proper error handling
+   * Call the BuildShip endpoint via Netlify function
    */
   private async callBuildShipEndpoint(sources: BuildShipSource[]): Promise<BuildShipResponse> {
-    console.log('[BUILDSHIP] Calling endpoint with', sources.length, 'sources');
-
-    const requestBody = {
-      sources: sources
-    };
+    console.log('[BUILDSHIP] Calling Netlify function with', sources.length, 'sources');
 
     try {
-      const response = await fetch(this.endpoint, {
+      const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'BUILDSHIP_API_KEY': this.apiKey
         },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(120000) // 2 minute timeout for preprocessing
+        body: JSON.stringify({
+          sources: sources
+        }),
       });
 
       if (!response.ok) {
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        
-        try {
-          const errorData = await response.json();
-          if (errorData.error || errorData.message) {
-            errorMessage = errorData.error || errorData.message;
-          }
-        } catch {
-          // If we can't parse error JSON, use the HTTP status
-        }
-        
-        throw new Error(errorMessage);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
       }
 
       const result = await response.json();
-      console.log('[BUILDSHIP] Endpoint response received');
-
-      // Handle different response formats
-      if (result.error) {
-        throw new Error(result.error);
+      
+      if (!result.cleanedTexts) {
+        throw new Error('No cleanedTexts received from Netlify function');
       }
+
+      console.log('[BUILDSHIP] Netlify function response received:', {
+        cleanedTexts: result.cleanedTexts.length,
+        sourcesProcessed: result.sourcesProcessed,
+        keyUsed: result.keyUsed
+      });
 
       return result;
 
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        throw new Error('BuildShip preprocessing timed out. Please try with smaller files or fewer sources.');
-      }
-      
-      throw error;
+      console.error('[BUILDSHIP] Netlify function call failed:', error);
+      throw new Error(`BuildShip service request failed: ${error.message || 'Unknown error'}`);
     }
   }
 
@@ -184,10 +164,6 @@ class BuildShipService {
    * Test the BuildShip connection with a simple request
    */
   public async testConnection(): Promise<boolean> {
-    if (!this.isReady()) {
-      return false;
-    }
-
     try {
       const testSources: BuildShipSource[] = [{
         type: 'file',
@@ -214,8 +190,8 @@ class BuildShipService {
   public getStatus(): { ready: boolean; hasApiKey: boolean; endpoint: string } {
     return {
       ready: this.isReady(),
-      hasApiKey: !!this.apiKey,
-      endpoint: this.endpoint
+      hasApiKey: true, // Always true since API key is handled server-side
+      endpoint: this.baseUrl
     };
   }
 }
