@@ -1,610 +1,216 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BuildShip Content Processor</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#00FF41',
-                        secondary: '#dc1aff',
-                        accent: '#00FFFF',
-                        background: '#0A0A0A',
-                        surface: '#1A1A1A',
-                        border: '#333333',
-                    }
-                }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Generate high-quality datasets for AI model fine-tuning using various content sources and web augmentation.">
+  <link rel="icon" href="/assets/meta/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/assets/meta/apple-touch-icon.png">
+  <meta name="theme-color" content="#00FF41">
+  <meta property="og:title" content="Fine Format - AI Fine-Tuning Dataset Generator">
+  <meta property="og:description" content="Generate high-quality datasets for AI model fine-tuning.">
+  <meta property="og:image" content="/assets/meta/preview.png">
+  <meta property="og:url" content="#">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Fine Format - AI Fine-Tuning Dataset Generator">
+  <meta name="twitter:description" content="Generate high-quality datasets for AI model fine-tuning.">
+  <meta name="twitter:image" content="/assets/meta/preview.png">
+  <title>Fine Format - AI Fine-Tuning Dataset Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#00FF41',
+              light: '#39FF6B',
+              dark: '#00CC33',
+            },
+            secondary: '#dc1aff',
+            accent: '#00FFFF',
+            warning: '#FFFF00',
+            error: '#FF4444',
+            success: '#00FF41',
+            background: '#0A0A0A',
+            surface: '#1A1A1A',
+            foreground: '#00FF41',
+            border: '#333333',
+            muted: '#666666',
+          },
+          fontFamily: {
+            sans: ['Source Sans Pro', 'system-ui', 'sans-serif'],
+            mono: ['Source Code Pro', 'monospace'],
+          },
+          animation: {
+            'glow-pulse': 'glow-pulse 2s ease-in-out infinite alternate',
+            'scanline': 'scanline 2s linear infinite',
+            'flicker': 'flicker 0.15s infinite linear',
+            'matrix-rain': 'matrix-rain 20s linear infinite',
+          },
+          keyframes: {
+            'glow-pulse': {
+              '0%': { 
+                textShadow: '0 0 3px #00FF41, 0 0 6px #00FF41, 0 0 9px #00FF41',
+                filter: 'brightness(1)'
+              },
+              '100%': { 
+                textShadow: '0 0 5px #00FF41, 0 0 10px #00FF41, 0 0 15px #00FF41',
+                filter: 'brightness(1.1)'
+              }
+            },
+            'scanline': {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100vh)' }
+            },
+            'flicker': {
+              '0%, 100%': { opacity: '1' },
+              '50%': { opacity: '0.8' }
+            },
+            'matrix-rain': {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(100vh)' }
             }
+          },
+          boxShadow: {
+            'neon': '0 0 5px currentColor, 0 0 10px currentColor, 0 0 15px currentColor',
+            'neon-lg': '0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor',
+            'cyber': '0 0 20px rgba(0, 255, 65, 0.3), inset 0 0 20px rgba(0, 255, 65, 0.05)',
+          }
         }
-    </script>
-    <style>
-        body {
-            background: linear-gradient(135deg, #0A0A0A 0%, #1A1A1A 100%);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        .cyber-card {
-            background: linear-gradient(135deg, rgba(26, 26, 26, 0.9), rgba(26, 26, 26, 0.7));
-            backdrop-filter: blur(10px);
-            border: 1px solid #333333;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(0, 255, 65, 0.05);
-        }
-        
-        .cyber-button {
-            background: linear-gradient(45deg, rgba(0, 255, 65, 0.1), rgba(0, 255, 65, 0.15));
-            border: 1px solid #00FF41;
-            box-shadow: 0 0 5px rgba(0, 255, 65, 0.2);
-            transition: all 0.3s ease;
-        }
-        
-        .cyber-button:hover {
-            background: linear-gradient(45deg, rgba(0, 255, 65, 0.15), rgba(0, 255, 65, 0.2));
-            box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
-            transform: translateY(-1px);
-        }
-        
-        .cyber-input {
-            background: rgba(26, 26, 26, 0.8);
-            border: 1px solid #333333;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
-            transition: all 0.3s ease;
-        }
-        
-        .cyber-input:focus {
-            border-color: #00FF41;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(0, 255, 65, 0.2);
-            outline: none;
-        }
-        
-        .neon-text {
-            color: #00FF41;
-            text-shadow: 0 0 5px #00FF41;
-        }
-        
-        .loading-spinner {
-            border: 2px solid rgba(0, 255, 65, 0.2);
-            border-left: 2px solid #00FF41;
-            border-radius: 50%;
-            width: 20px;
-            height: 20px;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .fade-in {
-            animation: fadeIn 0.5s ease-in;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;900&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Cyberpunk scanline effect */
+    .scanlines::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      background: linear-gradient(
+        transparent 50%, 
+        rgba(0, 255, 65, 0.02) 50%
+      );
+      background-size: 100% 4px;
+      z-index: 1000;
+    }
+
+    /* Matrix-style background effect */
+    .matrix-bg::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: 
+        radial-gradient(circle at 20% 80%, rgba(0, 255, 65, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(220, 26, 255, 0.05) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* Glitch text effect */
+    .glitch {
+      position: relative;
+    }
+
+    .glitch::before,
+    .glitch::after {
+      content: attr(data-text);
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .glitch::before {
+      animation: glitch-1 0.5s infinite;
+      color: #dc1aff;
+      z-index: -1;
+    }
+
+    .glitch::after {
+      animation: glitch-2 0.5s infinite;
+      color: #00FFFF;
+      z-index: -2;
+    }
+
+    @keyframes glitch-1 {
+      0%, 14%, 15%, 49%, 50%, 99%, 100% {
+        transform: translate(0);
+      }
+      15%, 49% {
+        transform: translate(-2px, 1px);
+      }
+    }
+
+    @keyframes glitch-2 {
+      0%, 20%, 21%, 62%, 63%, 99%, 100% {
+        transform: translate(0);
+      }
+      21%, 62% {
+        transform: translate(2px, -1px);
+      }
+    }
+
+    /* Neon border animation */
+    .neon-border {
+      border: 1px solid #00FF41;
+      box-shadow: 
+        0 0 3px #00FF41,
+        inset 0 0 3px rgba(0, 255, 65, 0.05);
+      animation: border-flicker 2s infinite alternate;
+    }
+
+    @keyframes border-flicker {
+      0%, 100% {
+        border-color: #00FF41;
+        box-shadow: 
+          0 0 3px #00FF41,
+          inset 0 0 3px rgba(0, 255, 65, 0.05);
+      }
+      50% {
+        border-color: #39FF6B;
+        box-shadow: 
+          0 0 5px #39FF6B,
+          inset 0 0 5px rgba(57, 255, 107, 0.1);
+      }
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1A1A1A;
+      border: 1px solid #333333;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(45deg, #00FF41, #39FF6B);
+      border-radius: 4px;
+      box-shadow: 0 0 3px #00FF41;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(45deg, #39FF6B, #00FF41);
+      box-shadow: 0 0 5px #00FF41;
+    }
+  </style>
 </head>
-<body class="min-h-screen text-white">
-    <div class="container mx-auto px-4 py-8 max-w-4xl">
-        <!-- Header -->
-        <header class="text-center mb-8">
-            <h1 class="text-4xl font-bold neon-text mb-4">BuildShip Content Processor</h1>
-            <p class="text-gray-300 text-lg">Upload files or add URLs to extract and clean content using BuildShip workflow</p>
-        </header>
-
-        <!-- API Key Configuration -->
-        <div class="cyber-card rounded-lg p-6 mb-8">
-            <h2 class="text-xl font-bold text-primary mb-4">🔑 API Configuration</h2>
-            <div class="mb-4">
-                <label for="apiKey" class="block text-sm font-medium text-gray-300 mb-2">BuildShip API Key</label>
-                <input 
-                    type="password" 
-                    id="apiKey" 
-                    placeholder="Enter your BuildShip API key"
-                    class="w-full px-4 py-3 cyber-input text-white rounded-lg"
-                >
-                <p class="text-xs text-gray-400 mt-2">Your API key is stored locally and never sent to external servers</p>
-            </div>
-        </div>
-
-        <!-- Input Sources -->
-        <div class="cyber-card rounded-lg p-6 mb-8">
-            <h2 class="text-xl font-bold text-primary mb-4">📁 Content Sources</h2>
-            
-            <!-- File Upload -->
-            <div class="mb-6">
-                <label class="block text-sm font-medium text-gray-300 mb-2">Upload Files</label>
-                <div class="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center hover:border-primary transition-colors">
-                    <input type="file" id="fileInput" multiple accept=".txt,.pdf,.docx,.html,.md" class="hidden">
-                    <button onclick="document.getElementById('fileInput').click()" class="cyber-button px-6 py-3 rounded-lg text-primary font-semibold">
-                        Choose Files
-                    </button>
-                    <p class="text-gray-400 mt-2">Supports: PDF, DOCX, TXT, HTML, MD</p>
-                </div>
-                <div id="fileList" class="mt-4 space-y-2"></div>
-            </div>
-
-            <!-- URL Input -->
-            <div class="mb-6">
-                <label for="urlInput" class="block text-sm font-medium text-gray-300 mb-2">Add URLs</label>
-                <div class="flex gap-2">
-                    <input 
-                        type="url" 
-                        id="urlInput" 
-                        placeholder="https://example.com/article"
-                        class="flex-1 px-4 py-3 cyber-input text-white rounded-lg"
-                    >
-                    <button onclick="addUrl()" class="cyber-button px-6 py-3 rounded-lg text-primary font-semibold">
-                        Add URL
-                    </button>
-                </div>
-                <div id="urlList" class="mt-4 space-y-2"></div>
-            </div>
-
-            <!-- Process Button -->
-            <div class="text-center">
-                <button 
-                    onclick="processContent()" 
-                    id="processBtn"
-                    class="cyber-button px-8 py-4 rounded-lg text-primary font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled
-                >
-                    <span id="processText">Process Content</span>
-                    <div id="processSpinner" class="loading-spinner ml-2 hidden inline-block"></div>
-                </button>
-                <p class="text-gray-400 mt-2">Add at least one file or URL to process</p>
-            </div>
-        </div>
-
-        <!-- Results -->
-        <div id="resultsSection" class="cyber-card rounded-lg p-6 hidden">
-            <h2 class="text-xl font-bold text-primary mb-4">✨ Processed Results</h2>
-            <div id="resultsContent"></div>
-        </div>
-
-        <!-- Error Display -->
-        <div id="errorSection" class="bg-red-900/20 border border-red-500 rounded-lg p-4 hidden">
-            <h3 class="text-red-400 font-bold mb-2">❌ Error</h3>
-            <p id="errorMessage" class="text-red-300"></p>
-        </div>
-    </div>
-
-    <script>
-        let sources = [];
-        let apiKey = '';
-
-        // Load saved API key
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedApiKey = localStorage.getItem('buildship_api_key');
-            if (savedApiKey) {
-                document.getElementById('apiKey').value = savedApiKey;
-                apiKey = savedApiKey;
-            }
-        });
-
-        // Save API key on change
-        document.getElementById('apiKey').addEventListener('input', (e) => {
-            apiKey = e.target.value;
-            localStorage.setItem('buildship_api_key', apiKey);
-        });
-
-        // File handling
-        document.getElementById('fileInput').addEventListener('change', (e) => {
-            const files = Array.from(e.target.files);
-            files.forEach(file => {
-                const fileData = {
-                    type: 'file',
-                    name: file.name,
-                    size: file.size,
-                    file: file
-                };
-                sources.push(fileData);
-                displayFile(fileData);
-            });
-            updateProcessButton();
-        });
-
-        function displayFile(fileData) {
-            const fileList = document.getElementById('fileList');
-            const fileDiv = document.createElement('div');
-            fileDiv.className = 'flex items-center justify-between bg-gray-800 p-3 rounded-lg';
-            fileDiv.innerHTML = `
-                <div class="flex items-center">
-                    <span class="text-blue-400 mr-2">📄</span>
-                    <span class="text-white">${fileData.name}</span>
-                    <span class="text-gray-400 ml-2">(${formatFileSize(fileData.size)})</span>
-                </div>
-                <button onclick="removeSource('${fileData.name}')" class="text-red-400 hover:text-red-300">
-                    ✕
-                </button>
-            `;
-            fileList.appendChild(fileDiv);
-        }
-
-        function addUrl() {
-            const urlInput = document.getElementById('urlInput');
-            const url = urlInput.value.trim();
-            
-            if (!url) return;
-            
-            if (!isValidUrl(url)) {
-                showError('Please enter a valid URL');
-                return;
-            }
-
-            const urlData = {
-                type: 'url',
-                url: url,
-                name: new URL(url).hostname
-            };
-            
-            sources.push(urlData);
-            displayUrl(urlData);
-            urlInput.value = '';
-            updateProcessButton();
-        }
-
-        function displayUrl(urlData) {
-            const urlList = document.getElementById('urlList');
-            const urlDiv = document.createElement('div');
-            urlDiv.className = 'flex items-center justify-between bg-gray-800 p-3 rounded-lg';
-            urlDiv.innerHTML = `
-                <div class="flex items-center">
-                    <span class="text-green-400 mr-2">🌐</span>
-                    <span class="text-white">${urlData.name}</span>
-                    <span class="text-gray-400 ml-2">${urlData.url}</span>
-                </div>
-                <button onclick="removeSource('${urlData.url}')" class="text-red-400 hover:text-red-300">
-                    ✕
-                </button>
-            `;
-            urlList.appendChild(urlDiv);
-        }
-
-        function removeSource(identifier) {
-            sources = sources.filter(source => 
-                source.name !== identifier && source.url !== identifier
-            );
-            
-            // Refresh displays
-            document.getElementById('fileList').innerHTML = '';
-            document.getElementById('urlList').innerHTML = '';
-            
-            sources.forEach(source => {
-                if (source.type === 'file') {
-                    displayFile(source);
-                } else {
-                    displayUrl(source);
-                }
-            });
-            
-            updateProcessButton();
-        }
-
-        function updateProcessButton() {
-            const processBtn = document.getElementById('processBtn');
-            processBtn.disabled = sources.length === 0 || !apiKey;
-        }
-
-        async function processContent() {
-            if (!apiKey) {
-                showError('Please enter your BuildShip API key');
-                return;
-            }
-
-            if (sources.length === 0) {
-                showError('Please add at least one file or URL');
-                return;
-            }
-
-            setProcessingState(true);
-            hideError();
-            hideResults();
-
-            try {
-                // Prepare sources for the API
-                const processedSources = await prepareSources();
-                
-                // Call the BuildShip endpoint
-                const result = await callEndpoint(processedSources);
-                
-                if (result && result.cleanedTexts) {
-                    displayResults(result.cleanedTexts);
-                } else {
-                    showError('No cleaned texts returned from the endpoint');
-                }
-                
-            } catch (error) {
-                console.error('Processing error:', error);
-                showError(`Processing failed: ${error.message}`);
-            } finally {
-                setProcessingState(false);
-            }
-        }
-
-        async function prepareSources() {
-            const processedSources = [];
-            
-            for (const source of sources) {
-                if (source.type === 'file') {
-                    // Convert file to base64 or text
-                    const content = await readFileContent(source.file);
-                    processedSources.push({
-                        type: 'file',
-                        name: source.name,
-                        content: content,
-                        mimeType: source.file.type
-                    });
-                } else if (source.type === 'url') {
-                    processedSources.push({
-                        type: 'url',
-                        url: source.url,
-                        name: source.name
-                    });
-                }
-            }
-            
-            return processedSources;
-        }
-
-        function readFileContent(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                
-                reader.onload = (e) => {
-                    if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
-                        resolve(e.target.result);
-                    } else {
-                        // For binary files, return base64
-                        const base64 = e.target.result.split(',')[1];
-                        resolve(base64);
-                    }
-                };
-                
-                reader.onerror = reject;
-                
-                if (file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md')) {
-                    reader.readAsText(file);
-                } else {
-                    reader.readAsDataURL(file);
-                }
-            });
-        }
-
-        async function callEndpoint(sources) {
-            const url = "https://hiqtqy.buildship.run/executeWorkflow/D4xRme6b2N2vus1EeTNX/dd746df2-b48b-4b8a-9b63-7347c80ceeda";
-            const params = {
-                sources: sources
-            };
-            
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'BUILDSHIP_API_KEY': apiKey
-                },
-                body: JSON.stringify(params)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
-            console.log('Success:', result);
-            return result;
-        }
-
-        function displayResults(cleanedTexts) {
-            const resultsSection = document.getElementById('resultsSection');
-            const resultsContent = document.getElementById('resultsContent');
-            
-            if (!cleanedTexts || cleanedTexts.length === 0) {
-                showError('No cleaned texts were returned');
-                return;
-            }
-
-            let html = `
-                <div class="mb-4">
-                    <p class="text-green-400 font-semibold">✅ Successfully processed ${cleanedTexts.length} source(s)</p>
-                </div>
-            `;
-
-            cleanedTexts.forEach((text, index) => {
-                const preview = text.substring(0, 200) + (text.length > 200 ? '...' : '');
-                html += `
-                    <div class="mb-6 bg-gray-800 rounded-lg p-4">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-accent font-semibold">Cleaned Text ${index + 1}</h3>
-                            <div class="flex gap-2">
-                                <button onclick="copyText('${escapeHtml(text)}')" class="text-xs cyber-button px-3 py-1 rounded">
-                                    Copy
-                                </button>
-                                <button onclick="downloadText('${escapeHtml(text)}', 'cleaned_text_${index + 1}.txt')" class="text-xs cyber-button px-3 py-1 rounded">
-                                    Download
-                                </button>
-                            </div>
-                        </div>
-                        <div class="text-gray-300 text-sm mb-2">
-                            Length: ${text.length} characters
-                        </div>
-                        <div class="bg-gray-900 p-3 rounded text-gray-300 text-sm">
-                            <div class="preview">${escapeHtml(preview)}</div>
-                            ${text.length > 200 ? `
-                                <button onclick="toggleFullText(this, '${escapeHtml(text)}')" class="text-primary text-xs mt-2 hover:underline">
-                                    Show full text
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                `;
-            });
-
-            // Add bulk actions
-            html += `
-                <div class="mt-6 pt-4 border-t border-gray-600">
-                    <h3 class="text-accent font-semibold mb-3">Bulk Actions</h3>
-                    <div class="flex gap-3">
-                        <button onclick="copyAllTexts()" class="cyber-button px-4 py-2 rounded text-primary font-semibold">
-                            Copy All Texts
-                        </button>
-                        <button onclick="downloadAllTexts()" class="cyber-button px-4 py-2 rounded text-primary font-semibold">
-                            Download All as JSON
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            resultsContent.innerHTML = html;
-            resultsSection.classList.remove('hidden');
-            resultsSection.classList.add('fade-in');
-            
-            // Store results for bulk actions
-            window.currentResults = cleanedTexts;
-        }
-
-        function toggleFullText(button, fullText) {
-            const preview = button.parentElement.querySelector('.preview');
-            const isExpanded = button.textContent === 'Show less';
-            
-            if (isExpanded) {
-                const shortText = fullText.substring(0, 200) + (fullText.length > 200 ? '...' : '');
-                preview.textContent = shortText;
-                button.textContent = 'Show full text';
-            } else {
-                preview.textContent = fullText;
-                button.textContent = 'Show less';
-            }
-        }
-
-        function copyText(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                showSuccess('Text copied to clipboard!');
-            }).catch(err => {
-                showError('Failed to copy text');
-            });
-        }
-
-        function downloadText(text, filename) {
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function copyAllTexts() {
-            if (!window.currentResults) return;
-            
-            const allText = window.currentResults.join('\n\n---\n\n');
-            navigator.clipboard.writeText(allText).then(() => {
-                showSuccess('All texts copied to clipboard!');
-            }).catch(err => {
-                showError('Failed to copy texts');
-            });
-        }
-
-        function downloadAllTexts() {
-            if (!window.currentResults) return;
-            
-            const data = {
-                cleanedTexts: window.currentResults,
-                processedAt: new Date().toISOString(),
-                totalTexts: window.currentResults.length
-            };
-            
-            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'cleaned_texts.json';
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function setProcessingState(isProcessing) {
-            const processBtn = document.getElementById('processBtn');
-            const processText = document.getElementById('processText');
-            const processSpinner = document.getElementById('processSpinner');
-            
-            if (isProcessing) {
-                processBtn.disabled = true;
-                processText.textContent = 'Processing...';
-                processSpinner.classList.remove('hidden');
-            } else {
-                processBtn.disabled = sources.length === 0 || !apiKey;
-                processText.textContent = 'Process Content';
-                processSpinner.classList.add('hidden');
-            }
-        }
-
-        function showError(message) {
-            const errorSection = document.getElementById('errorSection');
-            const errorMessage = document.getElementById('errorMessage');
-            errorMessage.textContent = message;
-            errorSection.classList.remove('hidden');
-            errorSection.scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function hideError() {
-            document.getElementById('errorSection').classList.add('hidden');
-        }
-
-        function showSuccess(message) {
-            // Create temporary success message
-            const successDiv = document.createElement('div');
-            successDiv.className = 'fixed top-4 right-4 bg-green-900/90 border border-green-500 text-green-300 px-4 py-2 rounded-lg z-50';
-            successDiv.textContent = message;
-            document.body.appendChild(successDiv);
-            
-            setTimeout(() => {
-                document.body.removeChild(successDiv);
-            }, 3000);
-        }
-
-        function hideResults() {
-            document.getElementById('resultsSection').classList.add('hidden');
-        }
-
-        function isValidUrl(string) {
-            try {
-                new URL(string);
-                return true;
-            } catch (_) {
-                return false;
-            }
-        }
-
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML.replace(/'/g, '&#39;');
-        }
-
-        // Handle URL input on Enter key
-        document.getElementById('urlInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                addUrl();
-            }
-        });
-
-        // Update process button when API key changes
-        document.getElementById('apiKey').addEventListener('input', updateProcessButton);
-    </script>
+<body class="scanlines matrix-bg">
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
