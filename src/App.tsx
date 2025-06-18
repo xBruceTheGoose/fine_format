@@ -6,7 +6,6 @@ import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
 import { ProcessingStatus } from './components/ProcessingStatus';
 import { DatasetPreview } from './components/DatasetPreview';
-import { BuildShipStatus } from './components/BuildShipStatus';
 import { Button } from './components/ui/Button';
 import { Alert } from './components/ui/Alert';
 import { Card, CardContent, CardHeader } from './components/ui/Card';
@@ -131,9 +130,6 @@ const App: React.FC = () => {
               onClose={clearError}
             />
           )}
-
-          {/* BuildShip Status */}
-          <BuildShipStatus />
 
           {/* Fine-Tuning Goal Selection - Carousel Style */}
           <Card className="cyber-card">
