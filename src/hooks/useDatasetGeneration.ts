@@ -35,8 +35,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
   }, []);
 
   const calculateTimeEstimates = useCallback((currentStepIndex: number, totalSteps: number, sourceCount: number, enableWebAugmentation: boolean, enableGapFilling: boolean, gapCount: number = 0) => {
-    // Updated time estimates with BuildShip preprocessing
-    const buildshipProcessingTime = 30; // 30 seconds for BuildShip preprocessing
+    // Updated time estimates with BuildShip multiFormatContentCleaner preprocessing
+    const buildshipProcessingTime = 45; // 45 seconds for BuildShip multiFormatContentCleaner workflow
     const themeAnalysisTime = 20; // 20 seconds for theme identification
     const qaGenerationTime = 45; // 45 seconds for Q&A generation
     const webAugmentationTime = 60; // 60 seconds for web search and augmentation
@@ -96,7 +96,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     fineTuningGoal: FineTuningGoal,
     enableGapFilling: boolean = false
   ) => {
-    console.log('[DATASET_GENERATION] Starting dataset generation process with BuildShip preprocessing');
+    console.log('[DATASET_GENERATION] Starting dataset generation process with BuildShip multiFormatContentCleaner preprocessing');
     
     console.log('[DATASET_GENERATION] Parameters:', {
       fileCount: files.length,
@@ -126,8 +126,8 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
     // Check BuildShip service availability
     if (!buildshipService.isReady()) {
-      console.error('[DATASET_GENERATION] BuildShip service not ready');
-      setError('BuildShip preprocessing service is not configured. Please check your API key.');
+      console.error('[DATASET_GENERATION] BuildShip multiFormatContentCleaner service not ready');
+      setError('BuildShip multiFormatContentCleaner preprocessing service is not configured. Please check your API key.');
       return;
     }
 
@@ -159,25 +159,25 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       let currentStepIndex = 0;
 
-      // Step 1: Preprocess content using BuildShip
+      // Step 1: Preprocess content using BuildShip multiFormatContentCleaner
       currentStepIndex++;
-      console.log('[DATASET_GENERATION] Starting BuildShip preprocessing');
-      updateProgress(currentStepIndex, totalSteps, 'Preprocessing files and URLs with BuildShip...', totalSources, enableWebAugmentation, enableGapFilling);
+      console.log('[DATASET_GENERATION] Starting BuildShip multiFormatContentCleaner preprocessing');
+      updateProgress(currentStepIndex, totalSteps, 'Preprocessing files and URLs with BuildShip multiFormatContentCleaner...', totalSources, enableWebAugmentation, enableGapFilling);
       
       const cleanedTexts = await buildshipService.preprocessContent(
         readyFiles,
         readyUrls,
         (current, total, item) => {
-          updateProgress(currentStepIndex, totalSteps, `Preprocessing: ${item}`, totalSources, enableWebAugmentation, enableGapFilling);
+          updateProgress(currentStepIndex, totalSteps, `multiFormatContentCleaner processing: ${item}`, totalSources, enableWebAugmentation, enableGapFilling);
         }
       );
 
-      console.log('[DATASET_GENERATION] BuildShip preprocessing complete. Cleaned texts:', cleanedTexts.length);
+      console.log('[DATASET_GENERATION] BuildShip multiFormatContentCleaner preprocessing complete. Cleaned texts:', cleanedTexts.length);
       console.log('[DATASET_GENERATION] Cleaned text lengths:', cleanedTexts.map(text => `${text.length} chars`));
       
       if (cleanedTexts.length === 0) {
-        console.error('[DATASET_GENERATION] No content extracted from BuildShip preprocessing');
-        throw new Error('No content could be extracted from any sources during preprocessing.');
+        console.error('[DATASET_GENERATION] No content extracted from BuildShip multiFormatContentCleaner preprocessing');
+        throw new Error('No content could be extracted from any sources during multiFormatContentCleaner preprocessing.');
       }
 
       // Validate that we have sufficient content
@@ -450,13 +450,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setProgress(100);
       setEstimatedTimeRemaining(0);
       
-      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from preprocessed content`;
+      let completionMessage = `Successfully generated ${finalQAPairs.length} total Q&A pairs: ${initialQAPairs.length} from multiFormatContentCleaner preprocessed content`;
       
       if (validatedPairCount > 0) {
         completionMessage += ` + ${validatedPairCount} validated synthetic pairs`;
       }
       
-      completionMessage += ` (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${totalSources} sources using BuildShip preprocessing!`;
+      completionMessage += ` (${correctAnswers.length} correct, ${incorrectAnswers.length} incorrect) from ${totalSources} sources using BuildShip multiFormatContentCleaner preprocessing!`;
       
       if (identifiedGaps.length > 0) {
         completionMessage += ` Knowledge gaps addressed: ${identifiedGaps.length}.`;

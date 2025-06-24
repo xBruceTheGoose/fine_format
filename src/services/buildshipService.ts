@@ -14,7 +14,6 @@ interface BuildShipSource {
 interface BuildShipResponse {
   cleanedTexts?: string[];
   sourcesProcessed?: number;
-  keyUsed?: number;
   error?: string;
   message?: string;
 }
@@ -23,23 +22,23 @@ class BuildShipService {
   private baseUrl = '/.netlify/functions/buildship-preprocess';
 
   constructor() {
-    console.log('[BUILDSHIP] Service initialized - using Netlify functions');
+    console.log('[BUILDSHIP] Service initialized - using multiFormatContentCleaner workflow');
   }
 
   public isReady(): boolean {
-    // Always ready since we're using Netlify functions
+    // Always ready since we're using Netlify functions with embedded API key
     return true;
   }
 
   /**
-   * Process files and URLs through BuildShip preprocessing workflow
+   * Process files and URLs through BuildShip multiFormatContentCleaner workflow
    */
   public async preprocessContent(
     files: FileData[],
     urls: UrlData[],
     onProgress?: (current: number, total: number, item: string) => void
   ): Promise<string[]> {
-    console.log('[BUILDSHIP] Starting content preprocessing via Netlify function');
+    console.log('[BUILDSHIP] Starting content preprocessing via multiFormatContentCleaner workflow');
     
     // Validate inputs
     const readyFiles = files.filter(f => f.status === 'read' && f.rawContent.trim());
@@ -49,7 +48,7 @@ class BuildShipService {
       throw new Error('No valid files or URLs ready for preprocessing.');
     }
 
-    // Prepare sources for BuildShip
+    // Prepare sources for BuildShip multiFormatContentCleaner
     const sources: BuildShipSource[] = [];
     
     // Add files
@@ -85,17 +84,17 @@ class BuildShipService {
       });
     });
 
-    console.log(`[BUILDSHIP] Prepared ${sources.length} sources for preprocessing`);
+    console.log(`[BUILDSHIP] Prepared ${sources.length} sources for multiFormatContentCleaner workflow`);
 
     try {
       if (onProgress) {
-        onProgress(sources.length, sources.length, 'Sending to BuildShip for preprocessing...');
+        onProgress(sources.length, sources.length, 'Sending to BuildShip multiFormatContentCleaner...');
       }
 
-      const result = await this.callBuildShipEndpoint(sources);
+      const result = await this.callBuildShipWorkflow(sources);
       
       if (!result.cleanedTexts || !Array.isArray(result.cleanedTexts)) {
-        throw new Error('Invalid response format from BuildShip. Expected cleanedTexts array.');
+        throw new Error('Invalid response format from BuildShip multiFormatContentCleaner. Expected cleanedTexts array.');
       }
 
       // Validate cleaned texts
@@ -104,25 +103,25 @@ class BuildShipService {
       );
 
       if (validCleanedTexts.length === 0) {
-        throw new Error('No valid cleaned text content received from BuildShip preprocessing.');
+        throw new Error('No valid cleaned text content received from BuildShip multiFormatContentCleaner workflow.');
       }
 
-      console.log(`[BUILDSHIP] Successfully preprocessed ${validCleanedTexts.length} sources`);
+      console.log(`[BUILDSHIP] Successfully preprocessed ${validCleanedTexts.length} sources via multiFormatContentCleaner`);
       console.log(`[BUILDSHIP] Total cleaned content length: ${validCleanedTexts.reduce((sum, text) => sum + text.length, 0)} characters`);
 
       return validCleanedTexts;
 
     } catch (error: any) {
-      console.error('[BUILDSHIP] Preprocessing failed:', error);
-      throw new Error(`BuildShip preprocessing failed: ${error.message || 'Unknown error'}`);
+      console.error('[BUILDSHIP] multiFormatContentCleaner preprocessing failed:', error);
+      throw new Error(`BuildShip multiFormatContentCleaner preprocessing failed: ${error.message || 'Unknown error'}`);
     }
   }
 
   /**
-   * Call the BuildShip endpoint via Netlify function
+   * Call the BuildShip multiFormatContentCleaner workflow via Netlify function
    */
-  private async callBuildShipEndpoint(sources: BuildShipSource[]): Promise<BuildShipResponse> {
-    console.log('[BUILDSHIP] Calling Netlify function with', sources.length, 'sources');
+  private async callBuildShipWorkflow(sources: BuildShipSource[]): Promise<BuildShipResponse> {
+    console.log('[BUILDSHIP] Calling multiFormatContentCleaner workflow via Netlify function with', sources.length, 'sources');
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -143,31 +142,30 @@ class BuildShipService {
       const result = await response.json();
       
       if (!result.cleanedTexts) {
-        throw new Error('No cleanedTexts received from Netlify function');
+        throw new Error('No cleanedTexts received from multiFormatContentCleaner workflow');
       }
 
-      console.log('[BUILDSHIP] Netlify function response received:', {
+      console.log('[BUILDSHIP] multiFormatContentCleaner workflow response received:', {
         cleanedTexts: result.cleanedTexts.length,
-        sourcesProcessed: result.sourcesProcessed,
-        keyUsed: result.keyUsed
+        sourcesProcessed: result.sourcesProcessed
       });
 
       return result;
 
     } catch (error: any) {
-      console.error('[BUILDSHIP] Netlify function call failed:', error);
-      throw new Error(`BuildShip service request failed: ${error.message || 'Unknown error'}`);
+      console.error('[BUILDSHIP] multiFormatContentCleaner workflow call failed:', error);
+      throw new Error(`BuildShip multiFormatContentCleaner workflow request failed: ${error.message || 'Unknown error'}`);
     }
   }
 
   /**
-   * Test the BuildShip connection with a simple request
+   * Test the BuildShip multiFormatContentCleaner workflow connection
    */
   public async testConnection(): Promise<boolean> {
     try {
       const testSources: BuildShipSource[] = [{
         type: 'file',
-        content: 'This is a test content for BuildShip connection.',
+        content: 'This is a test content for BuildShip multiFormatContentCleaner workflow connection.',
         metadata: {
           name: 'test.txt',
           mimeType: 'text/plain',
@@ -175,11 +173,11 @@ class BuildShipService {
         }
       }];
 
-      const result = await this.callBuildShipEndpoint(testSources);
+      const result = await this.callBuildShipWorkflow(testSources);
       return !!(result.cleanedTexts && Array.isArray(result.cleanedTexts));
 
     } catch (error) {
-      console.error('[BUILDSHIP] Connection test failed:', error);
+      console.error('[BUILDSHIP] multiFormatContentCleaner connection test failed:', error);
       return false;
     }
   }
@@ -187,11 +185,12 @@ class BuildShipService {
   /**
    * Get service status information
    */
-  public getStatus(): { ready: boolean; hasApiKey: boolean; endpoint: string } {
+  public getStatus(): { ready: boolean; hasApiKey: boolean; endpoint: string; workflow: string } {
     return {
       ready: this.isReady(),
       hasApiKey: true, // Always true since API key is handled server-side
-      endpoint: this.baseUrl
+      endpoint: this.baseUrl,
+      workflow: 'multiFormatContentCleaner'
     };
   }
 }
