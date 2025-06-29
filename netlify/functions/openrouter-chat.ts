@@ -73,6 +73,14 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       const keyNumber = i + 1;
       
       try {
+        const controller = new AbortController();
+        const signal = controller.signal;
+
+        // Set timeout slightly less than typical Netlify function limits (e.g., 25s if limit is 26s)
+        const timeoutId = setTimeout(() => {
+          controller.abort();
+        }, 25000); // 25 seconds
+
         console.log(`[NETLIFY-OPENROUTER] Trying API key ${keyNumber}/${apiKeys.length}`);
         
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -93,7 +101,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
             frequency_penalty: 0.1,
             presence_penalty: 0.1,
           }),
+          signal, // Pass the abort signal to fetch
         });
+
+        clearTimeout(timeoutId); // Clear the timeout if fetch completes
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -139,6 +150,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       } catch (error: any) {
         lastError = error;
+        if (error.name === 'AbortError') {
+          console.error(`[NETLIFY-OPENROUTER] Key ${keyNumber} fetch aborted due to timeout (25s)`);
+          lastError = new Error(`Request to OpenRouter timed out after 25 seconds with key ${keyNumber}`); // Ensure lastError reflects timeout
+        }
         console.error(`[NETLIFY-OPENROUTER] Key ${keyNumber} failed:`, error.message);
         
         // Check if this is a quota/rate limit error
