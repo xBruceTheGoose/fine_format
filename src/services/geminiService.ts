@@ -21,7 +21,25 @@ class GeminiService {
   ): Promise<{ content: string; groundingMetadata?: GroundingMetadata; truncated?: boolean }> {
     console.log('[GEMINI] Making request to Netlify function');
 
+    // Validate messages before sending
+    if (!Array.isArray(messages) || messages.length === 0) {
+      throw new Error('Messages array is required and cannot be empty');
+    }
+
+    // Validate each message
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (!msg.role) {
+        throw new Error(`Message ${i} missing role`);
+      }
+      if (!msg.content && !msg.parts) {
+        throw new Error(`Message ${i} missing content or parts`);
+      }
+    }
+
     try {
+      console.log('[GEMINI] Sending request with', messages.length, 'messages');
+      
       const response = await fetch(this.baseUrl, {
         method: 'POST',
         headers: {
@@ -36,17 +54,44 @@ class GeminiService {
         }),
       });
 
+      console.log('[GEMINI] Response status:', response.status);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (parseError) {
+          console.error('[GEMINI] Failed to parse error response:', parseError);
+          errorData = { error: 'Failed to parse error response' };
+        }
+        
         console.error('[GEMINI] Netlify function error:', response.status, errorData);
-        throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
+        
+        // Handle specific error types
+        if (errorData.type === 'TIMEOUT_ERROR') {
+          throw new Error('Request timed out - content may be too large. Try using smaller content or files.');
+        } else if (errorData.type === 'QUOTA_EXCEEDED') {
+          throw new Error('API quota exceeded - please try again later.');
+        } else if (errorData.type === 'PAYLOAD_TOO_LARGE') {
+          throw new Error('Content too large for processing. Please use smaller files.');
+        } else if (errorData.type === 'SERVICE_UNAVAILABLE') {
+          throw new Error('Gemini API service is temporarily unavailable. Please try again.');
+        }
+        
+        throw new Error(`Netlify function error: ${response.status} - ${errorData.error || 'Unknown error'}`);
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('[GEMINI] Failed to parse response JSON:', parseError);
+        throw new Error('Failed to parse response from Gemini service');
+      }
       
       if (!data.content) {
         console.error('[GEMINI] No content in response:', data);
-        throw new Error('No content received from Netlify function');
+        throw new Error('No content received from Gemini service');
       }
 
       console.log('[GEMINI] Request successful, response length:', data.content.length);
@@ -63,12 +108,22 @@ class GeminiService {
 
     } catch (error: any) {
       console.error('[GEMINI] Request failed:', error);
+      
+      // Re-throw with more context if it's a network error
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error('Network error - unable to connect to Gemini service. Please check your connection.');
+      }
+      
       throw new Error(`Gemini service request failed: ${error.message || 'Unknown error'}`);
     }
   }
 
   private parseJsonResponse(responseText: string): any {
     console.log('[GEMINI] Parsing JSON response, length:', responseText.length);
+    
+    if (!responseText || responseText.trim().length === 0) {
+      throw new Error('Empty response received from Gemini service');
+    }
     
     let jsonStr = responseText.trim();
     
@@ -152,10 +207,11 @@ class GeminiService {
     console.error('[GEMINI] Last 500 chars of failed response:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
     
     if (originalResponse.trim().startsWith('<')) {
-      console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This might indicate a server-side error page or misconfiguration.');
+      console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This indicates a server-side error.');
+      throw new Error('Received HTML response instead of JSON. This indicates a server configuration issue.');
     }
     
-    throw new Error(`Failed to parse JSON response. Response may be truncated or malformed. Length: ${originalResponse.length}`);
+    throw new Error(`Failed to parse JSON response after all recovery attempts. Response length: ${originalResponse.length}`);
   }
 
   private fixCommonJsonIssues(jsonStr: string): string {
@@ -411,6 +467,11 @@ QUALITY STANDARDS:
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
+    if (!combinedContent || combinedContent.trim().length < 50) {
+      console.warn('[GEMINI] Content too short for theme identification');
+      return [];
+    }
+
     const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
@@ -433,7 +494,7 @@ FOCUS: ${goalConfig?.promptFocus}
 ${goalGuidance}
 
 THEME IDENTIFICATION REQUIREMENTS:
-- Identify themes that support generation of 100+ diverse, high-quality Q&A pairs
+- Identify themes that support generation of diverse, high-quality Q&A pairs
 - Focus on themes that align with the ${goalConfig?.name} objective
 - Consider both broad thematic areas and specific subtopics
 - Ensure themes are search-friendly for potential web augmentation
@@ -497,6 +558,11 @@ Generate the theme array now:`;
     identifiedThemes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
+    if (!originalContent || originalContent.trim().length < 100) {
+      console.warn('[GEMINI] Content too short for web augmentation');
+      return { augmentedText: originalContent };
+    }
+
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = identifiedThemes.length > 0 
       ? `\n\nPRIORITY THEMES FOR WEB SEARCH: ${identifiedThemes.join(', ')}`
@@ -513,7 +579,7 @@ EXPERTISE:
 - Fine-tuning dataset optimization
 - Information quality assessment
 
-OBJECTIVE: Enhance the original content with targeted web research to create a comprehensive, coherent resource optimized for generating 100+ high-quality Q&A pairs for ${goalConfig?.name} fine-tuning.`;
+OBJECTIVE: Enhance the original content with targeted web research to create a comprehensive, coherent resource optimized for generating high-quality Q&A pairs for ${goalConfig?.name} fine-tuning.`;
 
     const userPrompt = `Enhance the original content with targeted web research for ${goalConfig?.name} fine-tuning optimization.
 
@@ -524,9 +590,9 @@ ${goalSpecificGuidance}
 
 AUGMENTATION STRATEGY:
 1. Analyze core themes and identify enhancement opportunities.
-2. Use Google Search to find current, authoritative, and *recently updated* information relevant to these themes.
-3. Prioritize fetching information that is *new* and not redundant with the original content, unless it offers significant updates or deeper insights.
-4. Integrate web-sourced content seamlessly, ensuring it is distinct and complementary, not just a rephrasing of existing text.
+2. Use Google Search to find current, authoritative, and recently updated information relevant to these themes.
+3. Prioritize fetching information that is new and not redundant with the original content.
+4. Integrate web-sourced content seamlessly, ensuring it is distinct and complementary.
 5. Maintain coherent narrative flow and logical organization.
 6. Prioritize factual accuracy and source credibility in all augmented content.
 7. Enhance content depth and breadth while preserving original core themes.
@@ -545,7 +611,7 @@ QUALITY STANDARDS:
 - Sources should be authoritative and credible
 - Content should directly support the ${goalConfig?.name} objective
 - Integration should feel natural and coherent
-- Enhanced content should enable generation of 100+ diverse Q&A pairs
+- Enhanced content should enable generation of diverse Q&A pairs
 
 Return ONLY the enhanced, integrated content without commentary or source citations.
 
@@ -567,6 +633,7 @@ ${originalContent}
       console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
       return { augmentedText, groundingMetadata };
     } catch (error: any) {
+      console.error('[GEMINI] Web augmentation failed:', error);
       throw new Error(`Web augmentation failed: ${error.message || 'Unknown error'}`);
     }
   }
@@ -616,7 +683,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    if (content.length < 50) {
+    if (!content || content.length < 50) {
       throw new Error('Content too short for Q&A generation (minimum 50 characters)');
     }
 
@@ -715,7 +782,7 @@ Generate Q&A pairs now:`;
 
       if (validPairs.length === 0) {
         console.warn('[GEMINI] No valid Q&A pairs generated from content');
-        throw new Error('Failed to generate any valid Q&A pairs from the content. The content may not be suitable for Q&A generation.');
+        throw new Error('Failed to generate any valid Q&A pairs from the content. The content may not be suitable for Q&A generation or the AI service may be experiencing issues.');
       }
 
       return this.shuffleArray(validPairs);
@@ -732,6 +799,11 @@ Generate Q&A pairs now:`;
     generatedQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
+    if (!originalContent || originalContent.length < 100 || generatedQAPairs.length === 0) {
+      console.warn('[GEMINI] Insufficient content or Q&A pairs for gap analysis');
+      return [];
+    }
+
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const existingQuestions = generatedQAPairs.map(pair => pair.user);
     const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);

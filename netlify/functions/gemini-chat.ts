@@ -33,21 +33,46 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     };
   }
 
-  try {
-    const { messages, temperature = 0.7, max_tokens = 4000, tools, config }: RequestBody = JSON.parse(event.body || '{}');
+  console.log('[NETLIFY-GEMINI] Function invoked');
 
-    if (!messages || !Array.isArray(messages)) {
+  try {
+    // Parse request body
+    let requestBody: RequestBody;
+    try {
+      requestBody = JSON.parse(event.body || '{}');
+    } catch (parseError) {
+      console.error('[NETLIFY-GEMINI] Failed to parse request body:', parseError);
       return {
         statusCode: 400,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'Messages array is required' }),
+        body: JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          type: 'INVALID_REQUEST'
+        }),
       };
     }
 
-    // Try multiple API keys with fallback
+    const { messages, temperature = 0.7, max_tokens = 4000, tools, config } = requestBody;
+
+    if (!messages || !Array.isArray(messages)) {
+      console.error('[NETLIFY-GEMINI] Invalid messages array:', messages);
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          error: 'Messages array is required and must be an array',
+          type: 'INVALID_REQUEST'
+        }),
+      };
+    }
+
+    // Check for API keys with better error handling
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     const GEMINI_API_KEY_2 = process.env.GEMINI_API_KEY_2;
     const GEMINI_API_KEY_3 = process.env.GEMINI_API_KEY_3;
@@ -55,19 +80,23 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3].filter(key => key?.trim());
     
     if (apiKeys.length === 0) {
+      console.error('[NETLIFY-GEMINI] No API keys configured');
       return {
         statusCode: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'No Gemini API keys configured' }),
+        body: JSON.stringify({ 
+          error: 'Gemini API service is not configured. Please contact support.',
+          type: 'SERVICE_UNAVAILABLE'
+        }),
       };
     }
 
     console.log(`[NETLIFY-GEMINI] Available API keys: ${apiKeys.length}`);
 
-    // Check for binary content and validate size BEFORE processing
+    // Check for binary content and validate size
     const hasBinaryContent = messages.some(msg => 
       msg.parts?.some(part => part.inlineData)
     );
@@ -75,13 +104,11 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     if (hasBinaryContent) {
       console.log('[NETLIFY-GEMINI] Binary content detected, validating size...');
       
-      // Calculate total binary data size
       let totalBinarySize = 0;
       for (const msg of messages) {
         if (msg.parts) {
           for (const part of msg.parts) {
             if (part.inlineData?.data) {
-              // Base64 data size (approximate original size = base64 length * 0.75)
               totalBinarySize += part.inlineData.data.length * 0.75;
             }
           }
@@ -90,8 +117,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       console.log(`[NETLIFY-GEMINI] Total binary content size: ${Math.round(totalBinarySize / 1024)} KB`);
 
-      // CRITICAL: Much more restrictive limits to prevent 502 errors
-      const MAX_BINARY_SIZE = 150 * 1024; // 150KB to prevent timeouts (was 10MB)
+      // Conservative limit to prevent timeouts
+      const MAX_BINARY_SIZE = 2 * 1024 * 1024; // 2MB to prevent timeouts
       if (totalBinarySize > MAX_BINARY_SIZE) {
         return {
           statusCode: 413,
@@ -101,7 +128,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           },
           body: JSON.stringify({ 
             error: `Binary content too large: ${Math.round(totalBinarySize / 1024)}KB. Maximum allowed: ${MAX_BINARY_SIZE / 1024}KB`,
-            details: 'Large files cause Netlify function timeouts. Please use smaller files or split content.',
+            details: 'Large files cause function timeouts. Please use smaller files.',
             type: 'PAYLOAD_TOO_LARGE'
           }),
         };
@@ -118,33 +145,49 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       try {
         console.log(`[NETLIFY-GEMINI] Trying API key ${keyNumber}/${apiKeys.length}`);
         
-        // Import GoogleGenAI dynamically
-        const { GoogleGenAI } = await import('@google/genai');
+        // Dynamic import with error handling
+        let GoogleGenAI;
+        try {
+          const genaiModule = await import('@google/genai');
+          GoogleGenAI = genaiModule.GoogleGenAI;
+        } catch (importError) {
+          console.error('[NETLIFY-GEMINI] Failed to import @google/genai:', importError);
+          throw new Error('Failed to load Gemini SDK. Service temporarily unavailable.');
+        }
+
         const ai = new GoogleGenAI({ apiKey });
         
-        // Convert messages to Gemini format - handle both content and parts
-        const contents = messages.map((msg: any) => {
-          if (msg.parts) {
-            // Message already has parts (for binary content)
-            return {
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: msg.parts
-            };
-          } else {
-            // Regular text message
-            return {
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: msg.content }]
-            };
+        // Convert messages to Gemini format with validation
+        const contents = messages.map((msg: any, index: number) => {
+          try {
+            if (msg.parts) {
+              // Message already has parts (for binary content)
+              return {
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: msg.parts
+              };
+            } else if (msg.content) {
+              // Regular text message
+              return {
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.content }]
+              };
+            } else {
+              throw new Error(`Message ${index} missing content or parts`);
+            }
+          } catch (msgError) {
+            console.error(`[NETLIFY-GEMINI] Error processing message ${index}:`, msgError);
+            throw new Error(`Invalid message format at index ${index}`);
           }
         });
 
+        // Build request configuration with validation
         const requestConfig: any = {
           model: 'gemini-2.0-flash-exp',
           contents,
           config: {
-            maxOutputTokens: Math.min(max_tokens || 4000, 20000),
-            temperature: temperature || 0.7,
+            maxOutputTokens: Math.min(max_tokens || 4000, 8000),
+            temperature: Math.max(0, Math.min(1, temperature || 0.7)),
             topP: 0.95,
             topK: 40,
             ...config
@@ -156,7 +199,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           requestConfig.config.tools = tools;
         }
 
-        console.log(`[NETLIFY-GEMINI] Making request with key ${keyNumber}, config:`, {
+        console.log(`[NETLIFY-GEMINI] Making request with key ${keyNumber}:`, {
           model: requestConfig.model,
           maxOutputTokens: requestConfig.config.maxOutputTokens,
           temperature: requestConfig.config.temperature,
@@ -165,51 +208,77 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           hasBinaryContent
         });
 
-        // CRITICAL: Realistic timeout for Netlify functions
-        const timeoutMs = hasBinaryContent ? 20000 : 30000; // 20s for binary, 30s for text (increased from 25s)
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => reject(new Error('Request timeout - Netlify function limit exceeded')), timeoutMs);
-        });
-
-        const requestPromise = ai.models.generateContent(requestConfig);
-        const response = await Promise.race([requestPromise, timeoutPromise]);
+        // Set realistic timeout for Netlify functions
+        const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text
         
-        if (!response.text) {
-          console.error(`[NETLIFY-GEMINI] No response text from Gemini API with key ${keyNumber}`);
-          throw new Error('No response from Gemini API');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.log(`[NETLIFY-GEMINI] Request timeout after ${timeoutMs}ms with key ${keyNumber}`);
+          controller.abort();
+        }, timeoutMs);
+
+        try {
+          // Make the API request with timeout
+          const requestPromise = ai.models.generateContent(requestConfig);
+          const response = await Promise.race([
+            requestPromise,
+            new Promise((_, reject) => {
+              controller.signal.addEventListener('abort', () => {
+                reject(new Error('Request timeout - Netlify function limit exceeded'));
+              });
+            })
+          ]);
+          
+          clearTimeout(timeoutId);
+          
+          if (!response || typeof response.text !== 'function') {
+            console.error(`[NETLIFY-GEMINI] Invalid response structure from key ${keyNumber}:`, response);
+            throw new Error('Invalid response from Gemini API');
+          }
+
+          const responseText = response.text();
+          
+          if (!responseText || responseText.trim().length === 0) {
+            console.error(`[NETLIFY-GEMINI] Empty response from key ${keyNumber}`);
+            throw new Error('Empty response from Gemini API');
+          }
+
+          console.log(`[NETLIFY-GEMINI] Success with key ${keyNumber}, response length:`, responseText.length);
+
+          // Check if response was truncated
+          const finishReason = response.candidates?.[0]?.finishReason;
+          const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
+          
+          if (wasTruncated) {
+            console.warn(`[NETLIFY-GEMINI] Response was truncated (${finishReason}) with key ${keyNumber}`);
+          }
+
+          return {
+            statusCode: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              content: responseText,
+              candidates: response.candidates,
+              usage: response.usageMetadata,
+              finishReason: finishReason,
+              truncated: wasTruncated,
+              keyUsed: keyNumber
+            }),
+          };
+
+        } catch (requestError: any) {
+          clearTimeout(timeoutId);
+          throw requestError;
         }
-
-        const responseText = response.text();
-        console.log(`[NETLIFY-GEMINI] Success with key ${keyNumber}, response length:`, responseText.length);
-
-        // Check if response was truncated
-        if (response.candidates?.[0]?.finishReason === 'MAX_TOKENS') {
-          console.warn(`[NETLIFY-GEMINI] Response was truncated due to token limit with key ${keyNumber}`);
-        }
-
-        return {
-          statusCode: 200,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            content: responseText,
-            candidates: response.candidates,
-            usage: response.usageMetadata,
-            finishReason: response.candidates?.[0]?.finishReason,
-            truncated: response.candidates?.[0]?.finishReason === 'MAX_TOKENS',
-            keyUsed: keyNumber
-          }),
-        };
 
       } catch (error: any) {
         lastError = error;
-        console.error(`[NETLIFY-GEMINI] Key ${keyNumber} failed:`, error.message);
-        console.error(`[NETLIFY-GEMINI] Error details:`, {
-          name: error.name,
+        console.error(`[NETLIFY-GEMINI] Key ${keyNumber} failed:`, {
           message: error.message,
-          stack: error.stack?.substring(0, 500),
+          name: error.name,
           status: error.status,
           code: error.code
         });
@@ -224,19 +293,20 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         // Check if this is a timeout error
         const isTimeoutError = error.message?.includes('timeout') ||
                               error.message?.includes('TIMEOUT') ||
-                              error.code === 'ETIMEDOUT';
+                              error.code === 'ETIMEDOUT' ||
+                              error.name === 'AbortError';
 
         if (isQuotaError) {
           console.warn(`[NETLIFY-GEMINI] Quota/rate limit detected on key ${keyNumber}, trying next key`);
-          continue; // Try next key immediately for quota errors
+          continue;
         }
 
         if (isTimeoutError) {
           console.warn(`[NETLIFY-GEMINI] Timeout detected on key ${keyNumber}, trying next key`);
-          continue; // Try next key for timeout errors
+          continue;
         }
 
-        // For other errors, still try the next key but log the error type
+        // For other errors, still try the next key
         console.warn(`[NETLIFY-GEMINI] Error with key ${keyNumber}: ${error.message}, trying next key`);
         continue;
       }
@@ -244,11 +314,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     // All keys failed
     console.error(`[NETLIFY-GEMINI] All ${apiKeys.length} API keys failed`);
-    console.error(`[NETLIFY-GEMINI] Final error details:`, {
+    console.error(`[NETLIFY-GEMINI] Final error:`, {
       message: lastError?.message,
       name: lastError?.name,
       status: lastError?.status,
-      code: lastError?.code
+      code: lastError?.code,
+      stack: lastError?.stack?.substring(0, 500)
     });
     
     // Enhanced error handling with specific error types
@@ -256,8 +327,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     let statusCode = 500;
     let errorType = 'UNKNOWN_ERROR';
     
-    if (lastError?.message?.includes('timeout') || lastError?.message?.includes('TIMEOUT')) {
-      errorMessage = 'Request timed out - content may be too large or complex for Netlify function processing';
+    if (lastError?.message?.includes('timeout') || lastError?.name === 'AbortError') {
+      errorMessage = 'Request timed out - content may be too large or complex for processing';
       statusCode = 408;
       errorType = 'TIMEOUT_ERROR';
     } else if (lastError?.message?.includes('quota') || lastError?.status === 429) {
@@ -276,6 +347,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       errorMessage = 'Gemini API service temporarily unavailable';
       statusCode = 503;
       errorType = 'SERVICE_UNAVAILABLE';
+    } else if (lastError?.message?.includes('SDK') || lastError?.message?.includes('import')) {
+      errorMessage = 'Service initialization failed - please try again';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
     }
     
     return {
@@ -289,12 +364,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         details: lastError?.message,
         type: errorType,
         keysAttempted: apiKeys.length,
-        suggestion: hasBinaryContent ? 'Try using a smaller file (under 150KB) or convert to text format' : 'Please try again or contact support'
+        suggestion: hasBinaryContent ? 'Try using a smaller file or convert to text format' : 'Please try again or contact support'
       }),
     };
 
   } catch (error: any) {
-    console.error('[NETLIFY-GEMINI] Request processing failed:', error);
+    console.error('[NETLIFY-GEMINI] Function execution failed:', error);
     
     return {
       statusCode: 500,
@@ -303,9 +378,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        error: 'Failed to process request',
+        error: 'Internal server error - function execution failed',
         details: error.message,
-        type: error.name || 'UnknownError',
+        type: 'FUNCTION_ERROR',
         stack: error.stack?.substring(0, 200)
       }),
     };

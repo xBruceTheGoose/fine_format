@@ -110,7 +110,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
     if (readyFiles.length === 0 && readyUrls.length === 0) {
       console.error('[DATASET_GENERATION] No valid sources ready');
-      setError('No valid files or URLs ready for processing.');
+      setError('No valid files or URLs ready for processing. Please ensure your files are uploaded and URLs are fetched successfully.');
       return;
     }
 
@@ -169,22 +169,23 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
         let individualCleanedText: string = "";
 
-        if (sourceItem.type === 'file') {
-          const file = sourceItem.data as FileData;
-          individualCleanedText = file.rawContent;
+        try {
+          if (sourceItem.type === 'file') {
+            const file = sourceItem.data as FileData;
+            individualCleanedText = file.rawContent;
 
-          // Handle binary file text extraction
-          if (file.isBinary) {
-            let binaryFunctionName = '';
-            if (file.mimeType === 'application/pdf') {
-              binaryFunctionName = 'process-pdf';
-            } else if (file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-              binaryFunctionName = 'process-docx';
-            }
+            // Handle binary file text extraction
+            if (file.isBinary) {
+              let binaryFunctionName = '';
+              if (file.mimeType === 'application/pdf') {
+                binaryFunctionName = 'process-pdf';
+              } else if (file.mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                binaryFunctionName = 'process-docx';
+              }
 
-            if (binaryFunctionName) {
-              try {
+              if (binaryFunctionName) {
                 console.log(`[DATASET_GENERATION] Calling ${binaryFunctionName} for ${file.file.name}`);
+                
                 const response = await fetch(`/.netlify/functions/${binaryFunctionName}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -212,51 +213,52 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                 
                 individualCleanedText = result.extractedText;
                 console.log(`[DATASET_GENERATION] Extracted ${individualCleanedText.length} chars from binary file ${file.file.name}`);
-              } catch (binError: any) {
-                console.error(`[DATASET_GENERATION] Error extracting text from binary file ${file.file.name}:`, binError);
-                console.warn(`[DATASET_GENERATION] Skipping ${file.file.name} due to extraction failure`);
-                continue;
+              }
+            }
+          } else {
+            const url = sourceItem.data as UrlData;
+            individualCleanedText = url.rawContent;
+            
+            // Basic HTML stripping for URL content
+            if (url.title && url.rawContent.includes('<')) {
+              try {
+                const doc = new DOMParser().parseFromString(individualCleanedText, "text/html");
+                individualCleanedText = doc.body.textContent || "";
+                console.log(`[DATASET_GENERATION] Basic HTML stripping for URL: ${url.url}, new length: ${individualCleanedText.length}`);
+              } catch (parseError) {
+                console.warn(`[DATASET_GENERATION] Failed to parse HTML for ${url.url}, using raw content`);
               }
             }
           }
-        } else {
-          const url = sourceItem.data as UrlData;
-          individualCleanedText = url.rawContent;
-          
-          // Basic HTML stripping for URL content
-          if (url.title && url.rawContent.includes('<')) {
-            try {
-              const doc = new DOMParser().parseFromString(individualCleanedText, "text/html");
-              individualCleanedText = doc.body.textContent || "";
-              console.log(`[DATASET_GENERATION] Basic HTML stripping for URL: ${url.url}, new length: ${individualCleanedText.length}`);
-            } catch (parseError) {
-              console.warn(`[DATASET_GENERATION] Failed to parse HTML for ${url.url}, using raw content`);
-            }
-          }
-        }
 
-        if (!individualCleanedText || !individualCleanedText.trim()) {
-          console.warn(`[DATASET_GENERATION] Source ${currentSourceName} has no processable content. Skipping.`);
+          if (!individualCleanedText || !individualCleanedText.trim()) {
+            console.warn(`[DATASET_GENERATION] Source ${currentSourceName} has no processable content. Skipping.`);
+            continue;
+          }
+
+          if (individualCleanedText.length < 50) {
+            console.warn(`[DATASET_GENERATION] Content for ${currentSourceName} is too short (${individualCleanedText.length} chars). Adding to combined text only.`);
+          }
+
+          processedSources.push({
+            name: currentSourceName,
+            content: individualCleanedText,
+            length: individualCleanedText.length
+          });
+
+          overallCombinedCleanedText += (overallCombinedCleanedText ? "\n\n---\n\n" : "") + individualCleanedText;
+
+        } catch (sourceError: any) {
+          console.error(`[DATASET_GENERATION] Error processing source ${currentSourceName}:`, sourceError);
+          console.warn(`[DATASET_GENERATION] Skipping ${currentSourceName} due to processing error: ${sourceError.message}`);
           continue;
         }
-
-        if (individualCleanedText.length < 50) {
-          console.warn(`[DATASET_GENERATION] Content for ${currentSourceName} is too short (${individualCleanedText.length} chars). Adding to combined text only.`);
-        }
-
-        processedSources.push({
-          name: currentSourceName,
-          content: individualCleanedText,
-          length: individualCleanedText.length
-        });
-
-        overallCombinedCleanedText += (overallCombinedCleanedText ? "\n\n---\n\n" : "") + individualCleanedText;
       }
 
       console.log(`[DATASET_GENERATION] Content processing complete. Combined text length: ${overallCombinedCleanedText.length}, Processed sources: ${processedSources.length}`);
 
       if (overallCombinedCleanedText.length < 100) {
-        throw new Error('Combined content is too short for Q&A generation. Please provide more substantial content.');
+        throw new Error('Combined content is too short for Q&A generation. Please provide more substantial content or check that your files contain readable text.');
       }
 
       // Step 2: Global theme identification
@@ -291,7 +293,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       }
 
       if (allInitialQAPairs.length === 0) {
-        throw new Error('Failed to generate any Q&A pairs from the provided content. The content may not be suitable for Q&A generation or there may be an issue with the AI service.');
+        throw new Error('Failed to generate any Q&A pairs from the provided content. The content may not be suitable for Q&A generation or there may be an issue with the AI service. Please try with different content or contact support.');
       }
 
       let finalCombinedTextForAugmentation = overallCombinedCleanedText;
