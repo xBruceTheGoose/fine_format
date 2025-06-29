@@ -1,5 +1,5 @@
-import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair, KnowledgeGap } from '../types';
-import { FINE_TUNING_GOALS, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
+import { QAPair, GroundingMetadata, FineTuningGoal, KnowledgeGap } from '../types';
+import { FINE_TUNING_GOALS, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class GeminiService {
   private baseUrl = '/.netlify/functions/gemini-chat';
@@ -614,8 +614,8 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    if (content.length < 200) {
-      throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
+    if (content.length < 100) {
+      throw new Error('Content too short for comprehensive Q&A generation (minimum 100 characters)');
     }
 
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
@@ -625,11 +625,11 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    const batchSize = 25; // Standard batch size for Q&A generation
+    const batchSize = 25;
     const allPairs: QAPair[] = [];
     let currentBatchNumber = 0;
     const MAX_CONSECUTIVE_EMPTY_BATCHES = 2;
-    const OVERALL_MAX_BATCHES_ATTEMPT = 15; // Safety net
+    const OVERALL_MAX_BATCHES_ATTEMPT = 15;
     let consecutiveEmptyBatches = 0;
 
     console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
