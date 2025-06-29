@@ -147,8 +147,11 @@ class GeminiService {
     // All strategies failed
     console.error('[GEMINI] ❌ All parsing strategies failed');
     console.error('[GEMINI] Response length:', originalResponse.length);
-    console.error('[GEMINI] First 500 chars:', originalResponse.substring(0, 500));
-    console.error('[GEMINI] Last 500 chars:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
+    console.error('[GEMINI] First 500 chars of failed response:', originalResponse.substring(0, 500));
+    console.error('[GEMINI] Last 500 chars of failed response:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
+    if (originalResponse.trim().startsWith('<')) {
+        console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This might indicate a server-side error page or misconfiguration.');
+    }
     
     throw new Error(`Failed to parse JSON response. Response may be truncated or malformed. Length: ${originalResponse.length}`);
   }

@@ -1,5 +1,5 @@
 import { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
-import pdf from 'pdf-parse'; // Changed from 'pdf-parse/lib/pdf-parse.js' to 'pdf-parse'
+import pdf from 'pdf-parse/lib/pdf-parse.js'; // Reverted to specific path to test regression
 
 interface RequestBody {
   base64Data: string;
