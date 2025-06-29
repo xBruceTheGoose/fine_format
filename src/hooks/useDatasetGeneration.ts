@@ -137,7 +137,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       const totalSourceCount = allSources.length;
 
       // Calculate total steps dynamically
-      let estimatedTotalSteps = totalSourceCount * 1.5 + 1;
+      let estimatedTotalSteps = 3; // Base steps: content processing, theme analysis, Q&A generation
       if (enableWebAugmentation) estimatedTotalSteps += 1;
       if (enableGapFilling) estimatedTotalSteps += 3;
 
@@ -149,20 +149,23 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       let currentOverallProgressStep = 0;
 
-      console.log(`[DATASET_GENERATION] Starting individual processing for ${totalSourceCount} sources`);
+      console.log(`[DATASET_GENERATION] Starting content processing for ${totalSourceCount} sources`);
 
-      // Process each source individually
+      // Step 1: Process and combine all content
+      currentOverallProgressStep++;
+      updateProgress(
+        currentOverallProgressStep,
+        estimatedTotalSteps,
+        `Processing ${totalSourceCount} sources...`,
+        totalSourceCount, enableWebAugmentation, enableGapFilling
+      );
+
+      const processedSources = [];
       for (let i = 0; i < totalSourceCount; i++) {
         const sourceItem = allSources[i];
         const currentSourceName = sourceItem.name;
-        currentOverallProgressStep++;
 
-        updateProgress(
-          currentOverallProgressStep,
-          estimatedTotalSteps,
-          `Processing source ${i + 1}/${totalSourceCount}: ${currentSourceName.substring(0,30)}...`,
-          totalSourceCount, enableWebAugmentation, enableGapFilling
-        );
+        console.log(`[DATASET_GENERATION] Processing source ${i + 1}/${totalSourceCount}: ${currentSourceName}`);
 
         let individualCleanedText: string = "";
 
@@ -180,13 +183,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             }
 
             if (binaryFunctionName) {
-              updateProgress(
-                currentOverallProgressStep,
-                estimatedTotalSteps,
-                `Extracting text: ${file.file.name.substring(0,20)}...`,
-                totalSourceCount, enableWebAugmentation, enableGapFilling
-              );
-              
               try {
                 console.log(`[DATASET_GENERATION] Calling ${binaryFunctionName} for ${file.file.name}`);
                 const response = await fetch(`/.netlify/functions/${binaryFunctionName}`, {
@@ -218,7 +214,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                 console.log(`[DATASET_GENERATION] Extracted ${individualCleanedText.length} chars from binary file ${file.file.name}`);
               } catch (binError: any) {
                 console.error(`[DATASET_GENERATION] Error extracting text from binary file ${file.file.name}:`, binError);
-                setError(`Text extraction failed for ${file.file.name.substring(0,20)}. ${binError.message.substring(0,100)}`);
+                console.warn(`[DATASET_GENERATION] Skipping ${file.file.name} due to extraction failure`);
                 continue;
               }
             }
@@ -244,97 +240,67 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           continue;
         }
 
-        // Lower minimum content threshold for Q&A generation
-        if (individualCleanedText.length < 100) {
-          console.warn(`[DATASET_GENERATION] Content for ${currentSourceName} is too short (${individualCleanedText.length} chars) for Q&A. Adding to combined text only.`);
-          overallCombinedCleanedText += (overallCombinedCleanedText ? "\n\n---\n\n" : "") + individualCleanedText;
-          continue;
+        if (individualCleanedText.length < 50) {
+          console.warn(`[DATASET_GENERATION] Content for ${currentSourceName} is too short (${individualCleanedText.length} chars). Adding to combined text only.`);
         }
+
+        processedSources.push({
+          name: currentSourceName,
+          content: individualCleanedText,
+          length: individualCleanedText.length
+        });
 
         overallCombinedCleanedText += (overallCombinedCleanedText ? "\n\n---\n\n" : "") + individualCleanedText;
-
-        // Generate Q&A pairs for this source
-        updateProgress(
-          currentOverallProgressStep,
-          estimatedTotalSteps,
-          `Generating Q&A: ${currentSourceName.substring(0,20)}... (${i + 1}/${totalSourceCount})`,
-          totalSourceCount, enableWebAugmentation, enableGapFilling
-        );
-
-        try {
-          console.log(`[DATASET_GENERATION] Generating Q&A pairs for ${currentSourceName}, content length: ${individualCleanedText.length}`);
-          const individualQAPairs = await geminiService.generateQAPairs(
-            individualCleanedText,
-            [],
-            fineTuningGoal
-          );
-          allInitialQAPairs.push(...individualQAPairs);
-          console.log(`[DATASET_GENERATION] Generated ${individualQAPairs.length} Q&A pairs for ${currentSourceName}`);
-        } catch (qaError: any) {
-          console.error(`[DATASET_GENERATION] Failed to generate Q&A for ${currentSourceName}:`, qaError);
-          // Don't set error here, just log and continue with other sources
-          console.warn(`[DATASET_GENERATION] Continuing with other sources despite Q&A failure for ${currentSourceName}`);
-        }
       }
 
-      console.log(`[DATASET_GENERATION] Processing complete. Combined text length: ${overallCombinedCleanedText.length}, Initial Q&A pairs: ${allInitialQAPairs.length}`);
+      console.log(`[DATASET_GENERATION] Content processing complete. Combined text length: ${overallCombinedCleanedText.length}, Processed sources: ${processedSources.length}`);
 
-      // If we have no Q&A pairs but have combined text, try generating from combined content
-      if (allInitialQAPairs.length === 0 && overallCombinedCleanedText.length >= 200) {
-        console.log('[DATASET_GENERATION] No Q&A pairs from individual sources, trying combined content approach');
-        updateProgress(
-          currentOverallProgressStep,
-          estimatedTotalSteps,
-          'Generating Q&A from combined content...',
-          totalSourceCount, enableWebAugmentation, enableGapFilling
-        );
-
-        try {
-          const combinedQAPairs = await geminiService.generateQAPairs(
-            overallCombinedCleanedText,
-            [],
-            fineTuningGoal
-          );
-          allInitialQAPairs.push(...combinedQAPairs);
-          console.log(`[DATASET_GENERATION] Generated ${combinedQAPairs.length} Q&A pairs from combined content`);
-        } catch (combinedQAError: any) {
-          console.error('[DATASET_GENERATION] Failed to generate Q&A from combined content:', combinedQAError);
-        }
+      if (overallCombinedCleanedText.length < 100) {
+        throw new Error('Combined content is too short for Q&A generation. Please provide more substantial content.');
       }
 
-      if (allInitialQAPairs.length === 0 && overallCombinedCleanedText.length < 200) {
-        throw new Error('No Q&A pairs generated and combined content is too short. Please check your sources contain sufficient text content.');
+      // Step 2: Global theme identification
+      currentOverallProgressStep++;
+      updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Analyzing content for themes...', totalSourceCount, enableWebAugmentation, enableGapFilling);
+      
+      try {
+        const globalIdentifiedThemes = await geminiService.identifyThemes(overallCombinedCleanedText, fineTuningGoal);
+        allIdentifiedThemes = [...new Set(globalIdentifiedThemes)];
+        console.log('[DATASET_GENERATION] Identified global themes:', allIdentifiedThemes);
+      } catch (themeError: any) {
+        console.error('[DATASET_GENERATION] Theme identification failed:', themeError);
+        allIdentifiedThemes = [];
+      }
+
+      // Step 3: Generate Q&A pairs from combined content
+      currentOverallProgressStep++;
+      updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Generating Q&A pairs from content...', totalSourceCount, enableWebAugmentation, enableGapFilling);
+
+      try {
+        console.log(`[DATASET_GENERATION] Generating Q&A pairs from combined content, length: ${overallCombinedCleanedText.length}`);
+        const combinedQAPairs = await geminiService.generateQAPairs(
+          overallCombinedCleanedText,
+          allIdentifiedThemes,
+          fineTuningGoal
+        );
+        allInitialQAPairs.push(...combinedQAPairs);
+        console.log(`[DATASET_GENERATION] Generated ${combinedQAPairs.length} Q&A pairs from combined content`);
+      } catch (qaError: any) {
+        console.error('[DATASET_GENERATION] Failed to generate Q&A from combined content:', qaError);
+        throw new Error(`Failed to generate Q&A pairs: ${qaError.message}`);
       }
 
       if (allInitialQAPairs.length === 0) {
         throw new Error('Failed to generate any Q&A pairs from the provided content. The content may not be suitable for Q&A generation or there may be an issue with the AI service.');
       }
 
-      // Global theme identification
-      currentOverallProgressStep++;
-      updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Analyzing combined content for global themes...', totalSourceCount, enableWebAugmentation, enableGapFilling);
-      
-      if (overallCombinedCleanedText.trim()) {
-        try {
-          const globalIdentifiedThemes = await geminiService.identifyThemes(overallCombinedCleanedText, fineTuningGoal);
-          allIdentifiedThemes = [...new Set(globalIdentifiedThemes)];
-          console.log('[DATASET_GENERATION] Identified global themes:', allIdentifiedThemes);
-        } catch (themeError: any) {
-          console.error('[DATASET_GENERATION] Theme identification failed:', themeError);
-          // Continue without themes
-          allIdentifiedThemes = [];
-        }
-      } else {
-        console.warn('[DATASET_GENERATION] Combined cleaned text is empty. Skipping global theme identification.');
-      }
-
       let finalCombinedTextForAugmentation = overallCombinedCleanedText;
       let groundingMetadata;
 
       // Web augmentation
-      if (enableWebAugmentation && allIdentifiedThemes.length > 0 && overallCombinedCleanedText.trim()) {
+      if (enableWebAugmentation && allIdentifiedThemes.length > 0) {
         currentOverallProgressStep++;
-        updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Enhancing combined content with web research...', totalSourceCount, enableWebAugmentation, enableGapFilling);
+        updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Enhancing content with web research...', totalSourceCount, enableWebAugmentation, enableGapFilling);
         
         try {
           const result = await geminiService.augmentWithWebSearch(overallCombinedCleanedText, allIdentifiedThemes, fineTuningGoal);
@@ -346,8 +312,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           console.error('[DATASET_GENERATION] Web augmentation failed:', err.message);
           setError(`Web augmentation failed: ${err.message.substring(0,100)}. Proceeding without.`);
         }
-      } else if (enableWebAugmentation) {
-        console.warn('[DATASET_GENERATION] Web augmentation skipped due to no themes or empty combined text.');
       }
 
       let finalQAPairs: QAPair[] = [...allInitialQAPairs];
@@ -365,17 +329,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
           console.log('[DATASET_GENERATION] Starting knowledge gap analysis');
           updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Analyzing for knowledge gaps...', totalSourceCount, enableWebAugmentation, enableGapFilling);
           
-          if (finalCombinedTextForAugmentation.trim() && allInitialQAPairs.length > 0) {
-            identifiedGaps = await geminiService.identifyKnowledgeGaps(
-              finalCombinedTextForAugmentation,
-              allIdentifiedThemes,
-              allInitialQAPairs,
-              fineTuningGoal
-            );
-            console.log(`[DATASET_GENERATION] Identified ${identifiedGaps.length} knowledge gaps:`, identifiedGaps.map(g => g.id));
-          } else {
-            console.warn('[DATASET_GENERATION] Knowledge gap analysis skipped due to empty combined text or no initial Q&A pairs.');
-          }
+          identifiedGaps = await geminiService.identifyKnowledgeGaps(
+            finalCombinedTextForAugmentation,
+            allIdentifiedThemes,
+            allInitialQAPairs,
+            fineTuningGoal
+          );
+          console.log(`[DATASET_GENERATION] Identified ${identifiedGaps.length} knowledge gaps:`, identifiedGaps.map(g => g.id));
 
           if (identifiedGaps.length > 0) {
             // Generate validation context
@@ -448,20 +408,11 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
             // Validate synthetic pairs
             if (allSyntheticPairs.length > 0 && validationContext.trim()) {
-              currentOverallProgressStep++;
-              updateProgress(currentOverallProgressStep, estimatedTotalSteps, `Validating ${allSyntheticPairs.length} synthetic Q&A pairs...`, totalSourceCount, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
-              
               const validatedSyntheticPairs: QAPair[] = [];
               const validationThreshold = 0.6;
 
               for (let i = 0; i < allSyntheticPairs.length; i++) {
                 const synthPair = allSyntheticPairs[i];
-                updateProgress(
-                  currentOverallProgressStep,
-                  estimatedTotalSteps,
-                  `Validating synthetic pair ${i + 1}/${allSyntheticPairs.length}...`,
-                  totalSourceCount, enableWebAugmentation, enableGapFilling, identifiedGaps.length
-                );
                 
                 try {
                   const validation = await openRouterService.validateQAPair(
@@ -470,7 +421,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                     fineTuningGoal
                   );
 
-                  console.log(`[DATASET_GENERATION] Context-based validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
+                  console.log(`[DATASET_GENERATION] Validation result for pair ${i + 1}: valid=${validation.isValid}, confidence=${validation.confidence}`);
 
                   if (validation.isValid && validation.confidence >= validationThreshold) {
                     validatedSyntheticPairs.push({
@@ -489,7 +440,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
                   }
 
                 } catch (validationError) {
-                  console.error(`[DATASET_GENERATION] Context-based validation failed for synthetic pair ${i}:`, validationError);
+                  console.error(`[DATASET_GENERATION] Validation failed for synthetic pair ${i}:`, validationError);
                 }
               }
               
@@ -502,7 +453,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
               console.log('[DATASET_GENERATION] No synthetic pairs generated to validate.');
             }
           } else {
-            console.log('[DATASET_GENERATION] No knowledge gaps identified or prerequisites not met, skipping synthetic Q&A generation.');
+            console.log('[DATASET_GENERATION] No knowledge gaps identified, skipping synthetic Q&A generation.');
           }
         } catch (gapFillingError: any) {
           console.error('[DATASET_GENERATION] Knowledge gap filling process failed:', gapFillingError.message);

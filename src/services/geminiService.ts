@@ -38,12 +38,14 @@ class GeminiService {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error('[GEMINI] Netlify function error:', response.status, errorData);
         throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
       }
 
       const data = await response.json();
       
       if (!data.content) {
+        console.error('[GEMINI] No content in response:', data);
         throw new Error('No content received from Netlify function');
       }
 
@@ -614,8 +616,8 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    if (content.length < 100) {
-      throw new Error('Content too short for comprehensive Q&A generation (minimum 100 characters)');
+    if (content.length < 50) {
+      throw new Error('Content too short for Q&A generation (minimum 50 characters)');
     }
 
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
@@ -625,92 +627,10 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    const batchSize = 25;
-    const allPairs: QAPair[] = [];
-    let currentBatchNumber = 0;
-    const MAX_CONSECUTIVE_EMPTY_BATCHES = 2;
-    const OVERALL_MAX_BATCHES_ATTEMPT = 15;
-    let consecutiveEmptyBatches = 0;
+    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}`);
 
-    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
-
-    while (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
-      currentBatchNumber++;
-      console.log(`[GEMINI] Generating batch ${currentBatchNumber}/${OVERALL_MAX_BATCHES_ATTEMPT}. Current total pairs: ${allPairs.length}`);
-
-      try {
-        const batchPairs = await this.generateQAPairsBatch(
-          content,
-          themes,
-          fineTuningGoal,
-          batchSize,
-          currentBatchNumber
-        );
-        
-        if (batchPairs.length > 0) {
-          allPairs.push(...batchPairs);
-          consecutiveEmptyBatches = 0;
-          console.log(`[GEMINI] Batch ${currentBatchNumber} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
-        } else {
-          consecutiveEmptyBatches++;
-          console.log(`[GEMINI] Batch ${currentBatchNumber} returned 0 pairs.`);
-          if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES) {
-            console.log(`[GEMINI] Stopping Q&A generation after ${MAX_CONSECUTIVE_EMPTY_BATCHES} consecutive empty batches.`);
-            break;
-          }
-        }
-
-        // Small delay between batches to avoid rate limiting
-        if (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      } catch (error: any) {
-        console.error(`[GEMINI] Batch ${currentBatchNumber} failed:`, error.message);
-        consecutiveEmptyBatches++;
-        if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES + 1) {
-          console.error(`[GEMINI] Stopping Q&A generation due to multiple consecutive failed/empty batches.`);
-          break;
-        }
-      }
-    }
-
-    if (currentBatchNumber >= OVERALL_MAX_BATCHES_ATTEMPT) {
-      console.warn(`[GEMINI] Reached max batch attempt limit (${OVERALL_MAX_BATCHES_ATTEMPT}). Generated ${allPairs.length} pairs.`);
-    }
-
-    if (allPairs.length === 0) {
-      console.warn('[GEMINI] Failed to generate any Q&A pairs for this content.');
-    }
-
-    const shuffledPairs = this.shuffleArray(allPairs);
-
-    console.log('[GEMINI] Q&A generation process completed for this content portion:', {
-      generated: shuffledPairs.length,
-      batchesAttempted: currentBatchNumber,
-      correct: shuffledPairs.filter(p => p.isCorrect).length,
-      incorrect: shuffledPairs.filter(p => !p.isCorrect).length
-    });
-
-    return shuffledPairs;
-  }
-
-  private async generateQAPairsBatch(
-    content: string,
-    themes: string[],
-    fineTuningGoal: FineTuningGoal,
-    maxPairsToRequestInBatch: number,
-    batchNumber: number
-  ): Promise<QAPair[]> {
-    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const themeGuidance = themes.length > 0
-      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure good coverage of these themes if relevant to the current content portion.`
-      : '';
-
-    const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
-    const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestInBatch * INCORRECT_ANSWER_RATIO));
-    const correctCountTarget = maxPairsToRequestInBatch - incorrectCountTarget;
-
-    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning. Your goal is to extract as much value as possible from the provided text by generating relevant and diverse Q&A pairs.
+    // Use a more aggressive approach for Q&A generation
+    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
 
 EXPERTISE:
 - Question generation across multiple difficulty levels and types
@@ -719,32 +639,47 @@ EXPERTISE:
 - Quality assessment and consistency maintenance
 - Dataset balance and discrimination training
 
-OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch. Focus on relevance, quality, and diversity. This is batch ${batchNumber} of a series.`;
+OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content. Focus on creating diverse, relevant questions with accurate answers that will optimize ${goalConfig?.name} fine-tuning.
 
-    const userPrompt = `Generate as many high-quality Q&A pairs as you can from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch (batch number ${batchNumber}). Aim for approximately ${correctCountTarget} CORRECT answers and ${incorrectCountTarget} INCORRECT answers if you generate a full batch, but prioritize quality and relevance over exact counts.
+CRITICAL SUCCESS FACTORS:
+- Extract maximum value from every piece of content
+- Create questions that test different aspects of understanding
+- Ensure answers are comprehensive yet concise
+- Include both correct and strategically incorrect answers for discrimination training
+- Maintain high quality standards throughout`;
+
+    const userPrompt = `Generate comprehensive Q&A pairs from the provided content for ${goalConfig?.name} fine-tuning.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 
 ${goalSpecificGuidance}
 
-BATCH REQUIREMENTS:
-- Generate as many relevant and high-quality Q&A pairs as the content supports, up to ${maxPairsToRequestInBatch}.
-- If generating multiple pairs, aim for a mix of roughly ${correctCountTarget} correct and ${incorrectCountTarget} incorrect answers.
-- Ensure variety in question types and complexity levels.
-- Focus on different aspects of the content for this batch, avoiding excessive repetition if this is not the first batch.
-- Maintain high quality standards: clear questions, accurate and comprehensive answers (for correct ones), plausible but clearly wrong answers (for incorrect ones).
+GENERATION REQUIREMENTS:
+- Generate as many high-quality Q&A pairs as the content supports
+- Aim for approximately 92% correct answers and 8% incorrect answers
+- Ensure variety in question types and complexity levels
+- Cover different aspects and details of the content thoroughly
+- Make incorrect answers plausible but clearly wrong to aid discrimination training
+- Focus on content that directly supports the ${goalConfig?.name} objective
+
+QUALITY STANDARDS:
+- Questions must be clear, specific, and answerable from the content
+- Correct answers must be accurate, comprehensive, and well-structured
+- Incorrect answers must be plausible but factually wrong
+- All pairs must contribute meaningfully to fine-tuning effectiveness
+- Maintain consistency in style and approach
 
 CRITICAL JSON FORMAT:
-- Respond with ONLY a valid JSON array.
-- Start immediately with [ and end with ].
+- Respond with ONLY a valid JSON array
+- Start immediately with [ and end with ]
 - Each object: {"user": "question", "model": "answer", "isCorrect": boolean, "confidence": number}
-- Properly escape all strings.
-- No markdown, explanations, or code blocks outside the JSON structure.
+- Properly escape all strings (use \\" for quotes, \\n for newlines)
+- No markdown, explanations, or code blocks
 
-CONTENT REFERENCE (Batch ${batchNumber}):
+CONTENT TO PROCESS:
 ---
-${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for this batch request, full content is larger]' : ''}
+${content.substring(0, 12000)}${content.length > 12000 ? '\n[Content continues but truncated for this request]' : ''}
 ---
 
 Generate Q&A pairs now:`;
@@ -752,14 +687,14 @@ Generate Q&A pairs now:`;
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: `I understand. I will generate as many high-quality Q&A pairs as possible from the content, up to ${maxPairsToRequestInBatch} for batch ${batchNumber}, focusing on relevance and quality.` },
+        { role: 'assistant', content: `I understand. I will generate comprehensive Q&A pairs from the content, focusing on quality and relevance for ${goalConfig?.name} fine-tuning.` },
         { role: 'user', content: userPrompt }
-      ], 0.6, 8000, undefined, { responseMimeType: 'application/json' });
+      ], 0.6, 10000, undefined, { responseMimeType: 'application/json' });
 
       const qaData = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(qaData)) {
-        throw new Error(`Batch ${batchNumber}: Response is not a valid JSON array`);
+        throw new Error('Response is not a valid JSON array');
       }
 
       const validPairs = qaData.filter(
@@ -771,18 +706,23 @@ Generate Q&A pairs now:`;
         source: 'original' as const
       }));
 
-      console.log(`[GEMINI] Batch ${batchNumber} parsed:`, {
+      console.log(`[GEMINI] Q&A generation completed:`, {
         received: qaData.length,
         valid: validPairs.length,
         correct: validPairs.filter(p => p.isCorrect).length,
         incorrect: validPairs.filter(p => !p.isCorrect).length
       });
 
-      return validPairs;
+      if (validPairs.length === 0) {
+        console.warn('[GEMINI] No valid Q&A pairs generated from content');
+        throw new Error('Failed to generate any valid Q&A pairs from the content. The content may not be suitable for Q&A generation.');
+      }
+
+      return this.shuffleArray(validPairs);
 
     } catch (error: any) {
-      console.error(`[GEMINI] Batch ${batchNumber} generation failed:`, error);
-      throw new Error(`Batch ${batchNumber} failed: ${error.message || 'Unknown error'}`);
+      console.error(`[GEMINI] Q&A generation failed:`, error);
+      throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
     }
   }
 

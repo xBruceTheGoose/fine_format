@@ -166,7 +166,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         });
 
         // CRITICAL: Realistic timeout for Netlify functions
-        const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text (increased from 15s)
+        const timeoutMs = hasBinaryContent ? 20000 : 30000; // 20s for binary, 30s for text (increased from 25s)
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Request timeout - Netlify function limit exceeded')), timeoutMs);
         });
