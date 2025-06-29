@@ -1,10 +1,12 @@
 import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } from '../types';
 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp'; // This IS Flash Lite - confirmed migration
+
 // export const QA_PAIR_COUNT_TARGET = 100; // No longer a strict target for initial generation
 // export const SYNTHETIC_QA_TARGET_MIN = 50; // No longer a strict target
 // export const SYNTHETIC_QA_TARGET = 75; // No longer a strict target
 export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range) - still used as a guideline for prompts
+
 
 // Batch processing settings
 export const QA_GENERATION_BATCH_SIZE = 25; // Max Q&A pairs to request from LLM in a single batch call for initial generation.

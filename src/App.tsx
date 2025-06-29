@@ -36,9 +36,7 @@ const App: React.FC = () => {
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
-  // const canGenerate = totalReadySources > 0 && !isProcessing && buildshipService.isReady(); // Buildship removed
   const canGenerate = totalReadySources > 0 && !isProcessing;
-
 
   const handleGenerateDataset = () => {
     if (canGenerate) {

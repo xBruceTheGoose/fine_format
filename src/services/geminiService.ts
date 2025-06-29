@@ -748,9 +748,11 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
 
+
     while (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
       currentBatchNumber++;
       console.log(`[GEMINI] Generating batch ${currentBatchNumber}/${OVERALL_MAX_BATCHES_ATTEMPT}. Current total pairs: ${allPairs.length}`);
+
 
       try {
         const batchPairs = await this.generateQAPairsBatch(
@@ -776,6 +778,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
         // Small delay between batches to avoid rate limiting, only if not the last attempt
         if (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
+
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {

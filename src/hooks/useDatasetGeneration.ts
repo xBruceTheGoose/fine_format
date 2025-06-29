@@ -371,6 +371,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             updateProgress(currentOverallProgressStep, estimatedTotalSteps, `Generating synthetic Q&A for ${identifiedGaps.length} gaps...`, totalSourceCount, enableWebAugmentation, enableGapFilling, identifiedGaps.length);
             
             const totalGaps = identifiedGaps.length;
+
             // No longer use SYNTHETIC_QA_TARGET for minPairsPerGap.
             // Instead, prompt for as many as possible, up to a reasonable max for a single call.
             const maxPairsToRequestPerGapCall = 15; // Max to ask for in one go for a gap.
@@ -413,7 +414,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
               }
             }
             syntheticPairCount = allSyntheticPairs.length;
+
             console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs`);
+
 
             if (allSyntheticPairs.length > 0 && validationContext.trim()) {
               currentOverallProgressStep++;
@@ -521,6 +524,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       setCurrentStep(completionMessage);
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
+
+      // Play sound notification
+      playCompletionSound();
 
       // Send completion notification
       try {
