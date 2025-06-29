@@ -11,7 +11,7 @@ import { Alert } from './components/ui/Alert';
 import { Card, CardContent, CardHeader } from './components/ui/Card';
 import { Tooltip } from './components/ui/Tooltip';
 import { FINE_TUNING_GOALS } from './constants';
-import { buildshipService } from './services/buildshipService';
+// import { buildshipService } from './services/buildshipService'; // Buildship removed
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
@@ -36,7 +36,9 @@ const App: React.FC = () => {
   const readyFileCount = files.filter(f => f.status === 'read').length;
   const readyUrlCount = urls.filter(u => u.status === 'fetched').length;
   const totalReadySources = readyFileCount + readyUrlCount;
-  const canGenerate = totalReadySources > 0 && !isProcessing && buildshipService.isReady();
+  // const canGenerate = totalReadySources > 0 && !isProcessing && buildshipService.isReady(); // Buildship removed
+  const canGenerate = totalReadySources > 0 && !isProcessing;
+
 
   const handleGenerateDataset = () => {
     if (canGenerate) {
@@ -431,13 +433,65 @@ const App: React.FC = () => {
             >
               {isProcessing 
                 ? <span className="neon-text">GENERATING DATASET...</span>
-                : !buildshipService.isReady()
-                ? <span className="text-error">BUILDSHIP NOT CONFIGURED</span>
+                // : !buildshipService.isReady() // Buildship removed
+                // ? <span className="text-error">BUILDSHIP NOT CONFIGURED</span>
                 : <span>
                     <span className="neon-text">GENERATE DATASET</span>
                     <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
                   </span>
               }
+            </Button>
+          </div>
+
+          {/* Processing Status */}
+          <ProcessingStatus
+            isProcessing={isProcessing}
+            currentStep={currentStep}
+            progress={progress}
+            estimatedTimeRemaining={estimatedTimeRemaining}
+            totalEstimatedTime={totalEstimatedTime}
+          />
+
+          {/* Dataset Preview */}
+          {processedData && (
+            <DatasetPreview
+              qaPairs={processedData.qaPairs}
+              sourceFileCount={processedData.sourceFileCount}
+              sourceUrlCount={processedData.sourceUrlCount}
+              identifiedThemes={processedData.identifiedThemes}
+              correctAnswerCount={processedData.correctAnswerCount}
+              incorrectAnswerCount={processedData.incorrectAnswerCount}
+              isAugmented={processedData.isAugmented}
+              groundingMetadata={processedData.groundingMetadata}
+              syntheticPairCount={processedData.syntheticPairCount}
+              validatedPairCount={processedData.validatedPairCount}
+              identifiedGaps={processedData.identifiedGaps}
+              gapFillingEnabled={processedData.gapFillingEnabled}
+            />
+          )}
+        </div>
+
+        {/* Footer */}
+        <footer className="text-center mt-20 pt-8 border-t border-border relative">
+          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+          <p className="text-accent text-sm mb-4 font-mono">
+            <span className="neon-text-accent">POWERED BY BUILDSHIP + LEADING AI MODELS</span>
+          </p>
+          <p className="text-gray-400 text-sm font-mono mb-2">
+            &copy; {new Date().getFullYear()} DappGoose Labs DAO.
+          </p>
+          <p className="text-gray-400 text-sm font-mono">
+            Made with <span className="text-red-500 neon-text-red">{'<3'}</span> and{' '}
+            <span className="text-accent neon-text-accent">bolt.new</span> by{' '}
+            <span className="text-foreground">brucethegoose.eth</span>
+          </p>
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+export default App;
             </Button>
           </div>
 
