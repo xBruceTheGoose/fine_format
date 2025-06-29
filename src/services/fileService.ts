@@ -1,5 +1,5 @@
 import { FileData } from '../types';
-import { SUPPORTED_TEXT_MIME_TYPES, SUPPORTED_BINARY_MIME_TYPES, FILE_SIZE_LIMIT } from '../constants';
+import { SUPPORTED_TEXT_MIME_TYPES, SUPPORTED_BINARY_MIME_TYPES, FILE_SIZE_LIMIT, BINARY_FILE_SIZE_LIMIT } from '../constants';
 
 export class FileService {
   public static async processFiles(files: FileList): Promise<FileData[]> {
@@ -23,20 +23,28 @@ export class FileService {
       status: 'reading',
     };
 
-    // Check file size
-    if (file.size > FILE_SIZE_LIMIT) {
+    // Check if file is binary and apply appropriate size limits
+    const isBinaryFile = SUPPORTED_BINARY_MIME_TYPES.includes(mimeType) || 
+                        this.isBinaryFileByExtension(file.name);
+    
+    // Use appropriate size limit based on file type
+    const maxSize = isBinaryFile 
+      ? BINARY_FILE_SIZE_LIMIT // 10MB for binary files (PDF/DOCX)
+      : FILE_SIZE_LIMIT; // 5MB for text files
+
+    if (file.size > maxSize) {
+      const maxSizeMB = (maxSize / (1024 * 1024)).toFixed(1);
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
       return {
         ...baseFileData,
         status: 'failed',
-        error: `File too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum size is ${FILE_SIZE_LIMIT / 1024 / 1024}MB.`,
+        error: `File too large (${fileSizeMB}MB). Maximum size is ${maxSizeMB}MB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files.`,
       };
     }
 
     // Check if file type is supported
     const isTextFile = SUPPORTED_TEXT_MIME_TYPES.includes(mimeType) || 
                       this.isTextFileByExtension(file.name);
-    const isBinaryFile = SUPPORTED_BINARY_MIME_TYPES.includes(mimeType) || 
-                        this.isBinaryFileByExtension(file.name);
 
     if (!isTextFile && !isBinaryFile) {
       return {
@@ -49,6 +57,16 @@ export class FileService {
     try {
       if (isTextFile) {
         const content = await this.readAsText(file);
+        
+        // Validate text content
+        if (!content || content.trim().length < 10) {
+          return {
+            ...baseFileData,
+            status: 'failed',
+            error: 'File appears to be empty or contains insufficient text content.',
+          };
+        }
+
         return {
           ...baseFileData,
           rawContent: content,
@@ -57,6 +75,16 @@ export class FileService {
         };
       } else {
         const content = await this.readAsBase64(file);
+        
+        // Validate base64 content
+        if (!content || content.length < 100) {
+          return {
+            ...baseFileData,
+            status: 'failed',
+            error: 'File appears to be empty or corrupted.',
+          };
+        }
+
         return {
           ...baseFileData,
           rawContent: content,

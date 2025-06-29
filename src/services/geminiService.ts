@@ -1,37 +1,69 @@
-import { GoogleGenAI, GenerateContentResponse, Part } from '@google/genai';
 import { QAPair, GroundingMetadata, FineTuningGoal, ValidationResult, SyntheticQAPair, KnowledgeGap } from '../types';
-import { GEMINI_MODEL, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO, FINE_TUNING_GOALS } from '../constants';
+import { FINE_TUNING_GOALS, QA_PAIR_COUNT_TARGET, INCORRECT_ANSWER_RATIO } from '../constants';
 
 class GeminiService {
-  private ai: GoogleGenAI | null = null;
-  private isInitialized = false;
+  private baseUrl = '/.netlify/functions/gemini-chat';
 
   constructor() {
-    this.initialize();
-  }
-
-  private initialize(): void {
-    // Try both possible API key names for backward compatibility
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY;
-    
-    if (!apiKey?.trim()) {
-      console.error('[GEMINI] API key not found in environment variables');
-      console.error('[GEMINI] Expected: VITE_GEMINI_API_KEY in .env.local file');
-      return;
-    }
-
-    try {
-      this.ai = new GoogleGenAI({ apiKey: apiKey.trim() });
-      this.isInitialized = true;
-      console.log('[GEMINI] ✅ Service initialized successfully');
-    } catch (error) {
-      console.error('[GEMINI] Failed to initialize GoogleGenAI:', error);
-      this.isInitialized = false;
-    }
+    console.log('[GEMINI] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
-    return this.isInitialized && this.ai !== null;
+    // Always ready since we're using Netlify functions
+    return true;
+  }
+
+  private async makeRequest(
+    messages: Array<{ role: string; content?: string; parts?: any[] }>,
+    temperature = 0.7,
+    maxTokens = 4000,
+    tools?: any,
+    config?: any
+  ): Promise<{ content: string; groundingMetadata?: GroundingMetadata; truncated?: boolean }> {
+    console.log('[GEMINI] Making request to Netlify function');
+
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          tools,
+          config
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Netlify function error: ${response.status} ${response.statusText} - ${errorData.error || 'Unknown error'}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.content) {
+        throw new Error('No content received from Netlify function');
+      }
+
+      console.log('[GEMINI] Request successful, response length:', data.content.length);
+      
+      if (data.truncated) {
+        console.warn('[GEMINI] ⚠️ Response was truncated due to token limit');
+      }
+
+      return {
+        content: data.content,
+        groundingMetadata: data.candidates?.[0]?.groundingMetadata,
+        truncated: data.truncated
+      };
+
+    } catch (error: any) {
+      console.error('[GEMINI] Request failed:', error);
+      throw new Error(`Gemini service request failed: ${error.message || 'Unknown error'}`);
+    }
   }
 
   private parseJsonResponse(responseText: string): any {
@@ -115,8 +147,11 @@ class GeminiService {
     // All strategies failed
     console.error('[GEMINI] ❌ All parsing strategies failed');
     console.error('[GEMINI] Response length:', originalResponse.length);
-    console.error('[GEMINI] First 500 chars:', originalResponse.substring(0, 500));
-    console.error('[GEMINI] Last 500 chars:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
+    console.error('[GEMINI] First 500 chars of failed response:', originalResponse.substring(0, 500));
+    console.error('[GEMINI] Last 500 chars of failed response:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
+    if (originalResponse.trim().startsWith('<')) {
+        console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This might indicate a server-side error page or misconfiguration.');
+    }
     
     throw new Error(`Failed to parse JSON response. Response may be truncated or malformed. Length: ${originalResponse.length}`);
   }
@@ -374,10 +409,6 @@ QUALITY STANDARDS:
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
@@ -421,21 +452,13 @@ ${combinedContent.substring(0, 18000)}${combinedContent.length > 18000 ? '\n[Con
 Generate the theme array now:`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 1200,
-          temperature: 0.3,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' },
+        { role: 'user', content: userPrompt }
+      ], 0.3, 1200, undefined, { responseMimeType: 'application/json' });
 
-      const themes = this.parseJsonResponse(response.text);
+      const themes = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(themes)) {
         throw new Error('Response is not a valid JSON array');
@@ -471,10 +494,6 @@ Generate the theme array now:`;
     textContent: string,
     fileName: string
   ): Promise<string> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const systemPrompt = `You are an expert content processor specializing in text cleaning and optimization for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -513,20 +532,13 @@ ${textContent}
 ---`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will clean and optimize the text content while preserving all valuable information.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          maxOutputTokens: 10000,
-          temperature: 0.1,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will clean and optimize the text content while preserving all valuable information.' },
+        { role: 'user', content: userPrompt }
+      ], 0.1, 10000);
 
-      return response.text?.trim() || '';
+      return response.content?.trim() || '';
     } catch (error: any) {
       throw new Error(`Text cleaning failed: ${error.message || 'Unknown error'}`);
     }
@@ -537,10 +549,6 @@ ${textContent}
     mimeType: string,
     fileName: string
   ): Promise<string> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const systemPrompt = `You are an expert document processor specializing in extracting and optimizing text content from binary files for fine-tuning dataset preparation.
 
 EXPERTISE:
@@ -551,16 +559,7 @@ EXPERTISE:
 
 OBJECTIVE: Extract all valuable textual content from the binary file and optimize it for fine-tuning dataset generation.`;
 
-    const userParts: Part[] = [
-      { text: systemPrompt },
-      {
-        inlineData: {
-          mimeType,
-          data: base64Data,
-        },
-      },
-      {
-        text: `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
+    const userPrompt = `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
 
 EXTRACTION REQUIREMENTS:
 1. Extract all relevant textual content comprehensively
@@ -580,21 +579,26 @@ CONTENT PRIORITIES:
 - Technical specifications and data
 - Procedural instructions and guidelines
 
-Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`,
-      },
-    ];
+Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts: userParts }],
-        config: {
-          maxOutputTokens: 10000,
-          temperature: 0.1,
-        },
-      });
+      const response = await this.makeRequest([
+        { 
+          role: 'user', 
+          parts: [
+            { text: systemPrompt },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
+            { text: userPrompt }
+          ]
+        }
+      ], 0.1, 10000);
 
-      return response.text?.trim() || '';
+      return response.content?.trim() || '';
     } catch (error: any) {
       throw new Error(`Binary content cleaning failed: ${error.message || 'Unknown error'}`);
     }
@@ -605,10 +609,6 @@ Return only the extracted, optimized text content without commentary. If no mean
     identifiedThemes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = identifiedThemes.length > 0 
       ? `\n\nPRIORITY THEMES FOR WEB SEARCH: ${identifiedThemes.join(', ')}`
@@ -667,22 +667,14 @@ ${originalContent}
 ---`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          tools: [{ googleSearch: {} }],
-          maxOutputTokens: 12000,
-          temperature: 0.4,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' },
+        { role: 'user', content: userPrompt }
+      ], 0.4, 12000, [{ googleSearch: {} }]);
 
-      const augmentedText = response.text?.trim() || originalContent;
-      const groundingMetadata = response.candidates?.[0]?.groundingMetadata as GroundingMetadata;
+      const augmentedText = response.content?.trim() || originalContent;
+      const groundingMetadata = response.groundingMetadata;
 
       console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
       return { augmentedText, groundingMetadata };
@@ -736,10 +728,6 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     if (content.length < 200) {
       throw new Error('Content too short for comprehensive Q&A generation (minimum 200 characters)');
     }
@@ -751,72 +739,74 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    // Determine batch size, ensuring it's defined.
-    const batchSize = 25; // Standard batch size for Q&A generation
+    const batchSize = 25; // Standard batch size for Q&A generation. Max pairs per LLM call.
     const allPairs: QAPair[] = [];
-    let batch = 0;
+    let currentBatchNumber = 0;
+    const MAX_CONSECUTIVE_EMPTY_BATCHES = 2;
+    const OVERALL_MAX_BATCHES_ATTEMPT = 15; // Safety net to prevent runaway loops, e.g. 15*25 = 375 pairs max from one doc.
+    let consecutiveEmptyBatches = 0;
 
-    // Calculate an initial estimate for totalBatches for logging and a safe upper limit
-    const initialEstimatedBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
-    // Allow a few extra attempts beyond the initial estimate, e.g., 3 more or 1.5x, whichever is larger.
-    // Let's go with +3 for simplicity and to avoid very small increments if QA_PAIR_COUNT_TARGET is small.
-    const MAX_BATCHES_TO_ATTEMPT = initialEstimatedBatches + 3;
+    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
 
-    console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
 
-    while (batch < MAX_BATCHES_TO_ATTEMPT) {
-      const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
-      
-      console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
+    while (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
+      currentBatchNumber++;
+      console.log(`[GEMINI] Generating batch ${currentBatchNumber}/${OVERALL_MAX_BATCHES_ATTEMPT}. Current total pairs: ${allPairs.length}`);
+
 
       try {
         const batchPairs = await this.generateQAPairsBatch(
-          content, 
-          themes, 
-          fineTuningGoal, 
-          pairsToGenerateInThisBatch, // Use fixed batchSize
-          batch + 1, // Current batch number
-          MAX_BATCHES_TO_ATTEMPT // Pass max attempts for logging/prompt consistency in generateQAPairsBatch
+          content,
+          themes,
+          fineTuningGoal,
+          batchSize, // Max pairs to request in this batch
+          currentBatchNumber
         );
         
-        allPairs.push(...batchPairs);
-        console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
-
-        if (batchPairs.length === 0 && batch >= initialEstimatedBatches) {
-          console.log("[GEMINI] Current batch returned 0 pairs after reaching initial estimated batches. Stopping further generation in this phase.");
-          break;
+        if (batchPairs.length > 0) {
+          allPairs.push(...batchPairs);
+          consecutiveEmptyBatches = 0; // Reset counter if pairs are found
+          console.log(`[GEMINI] Batch ${currentBatchNumber} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
+        } else {
+          consecutiveEmptyBatches++;
+          console.log(`[GEMINI] Batch ${currentBatchNumber} returned 0 pairs.`);
+          if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES) {
+            console.log(`[GEMINI] Stopping Q&A generation after ${MAX_CONSECUTIVE_EMPTY_BATCHES} consecutive empty batches.`);
+            break;
+          }
         }
 
         // Small delay between batches to avoid rate limiting, only if not the last attempt
-        if (batch < MAX_BATCHES_TO_ATTEMPT - 1) {
+        if (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
+
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {
-        console.error(`[GEMINI] Batch ${batch + 1} failed:`, error);
-        // Decide if to break or continue on batch failure. For now, let's continue to allow subsequent batches.
+        console.error(`[GEMINI] Batch ${currentBatchNumber} failed:`, error.message);
+        // Decide if we should break or continue after a batch error. For now, let's continue for a few attempts.
+        consecutiveEmptyBatches++; // Count error as an empty batch for termination purposes
+        if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES + 1) { // Allow one more attempt after error
+            console.error(`[GEMINI] Stopping Q&A generation due to multiple consecutive failed/empty batches.`);
+            break;
+        }
       }
-      batch++;
     }
 
-    if (allPairs.length < QA_PAIR_COUNT_TARGET) {
-      console.warn(`[GEMINI] Generated ${allPairs.length} pairs, which is less than the target of ${QA_PAIR_COUNT_TARGET} after ${batch} batches.`);
+    if (currentBatchNumber >= OVERALL_MAX_BATCHES_ATTEMPT) {
+      console.warn(`[GEMINI] Reached max batch attempt limit (${OVERALL_MAX_BATCHES_ATTEMPT}). Generated ${allPairs.length} pairs.`);
     }
 
-    if (batch >= MAX_BATCHES_TO_ATTEMPT && allPairs.length < QA_PAIR_COUNT_TARGET) {
-      console.warn(`[GEMINI] Reached max batches limit (${MAX_BATCHES_TO_ATTEMPT}) but still under target pairs. Generated: ${allPairs.length}`);
+    if (allPairs.length === 0) {
+        console.warn('[GEMINI] Failed to generate any Q&A pairs for this content.');
+        // Not throwing an error here, as some files might genuinely not yield Q&A.
+        // The calling function in useDatasetGeneration should handle cases with no Q&A pairs.
     }
 
-    if (allPairs.length === 0 && QA_PAIR_COUNT_TARGET > 0) { // Check if target was > 0 to avoid error for 0 target
-        throw new Error('Failed to generate any Q&A pairs across all attempted batches.');
-    }
-
-    // Shuffle the final array to randomize order
     const shuffledPairs = this.shuffleArray(allPairs);
 
-    console.log('[GEMINI] Q&A generation process completed:', {
-      target: QA_PAIR_COUNT_TARGET,
+    console.log('[GEMINI] Q&A generation process completed for this content portion:', {
       generated: shuffledPairs.length,
-      batchesAttempted: batch,
+      batchesAttempted: currentBatchNumber,
       correct: shuffledPairs.filter(p => p.isCorrect).length,
       incorrect: shuffledPairs.filter(p => !p.isCorrect).length
     });
@@ -828,20 +818,21 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     content: string,
     themes: string[],
     fineTuningGoal: FineTuningGoal,
-    batchSize: number,
-    batchNumber: number,
-    totalBatches: number
+    maxPairsToRequestInBatch: number, // Renamed from batchSize
+    batchNumber: number
+    // totalBatches parameter removed as it's no longer fixed
   ): Promise<QAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const themeGuidance = themes.length > 0 
-      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure coverage of these themes in this batch.`
+    const themeGuidance = themes.length > 0
+      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure good coverage of these themes if relevant to the current content portion.`
       : '';
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
-    const incorrectCount = Math.max(1, Math.ceil(batchSize * INCORRECT_ANSWER_RATIO));
-    const correctCount = batchSize - incorrectCount;
+    // Dynamic incorrect count based on how many we ask for, but still a ratio
+    const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestInBatch * INCORRECT_ANSWER_RATIO));
+    const correctCountTarget = maxPairsToRequestInBatch - incorrectCountTarget;
 
-    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
+    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning. Your goal is to extract as much value as possible from the provided text by generating relevant and diverse Q&A pairs.
 
 EXPERTISE:
 - Question generation across multiple difficulty levels and types
@@ -850,9 +841,9 @@ EXPERTISE:
 - Quality assessment and consistency maintenance
 - Dataset balance and discrimination training
 
-OBJECTIVE: Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}, optimized for ${goalConfig?.name} fine-tuning.`;
+OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch. Focus on relevance, quality, and diversity. This is batch ${batchNumber} of a series.`;
 
-    const userPrompt = `Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.
+    const userPrompt = `Generate as many high-quality Q&A pairs as you can from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch (batch number ${batchNumber}). Aim for approximately ${correctCountTarget} CORRECT answers and ${incorrectCountTarget} INCORRECT answers if you generate a full batch, but prioritize quality and relevance over exact counts.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
@@ -860,42 +851,34 @@ FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 ${goalSpecificGuidance}
 
 BATCH REQUIREMENTS:
-- Generate exactly ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
-- Ensure variety in question types and complexity levels
-- Focus on different aspects of the content for this batch
-- Maintain high quality standards throughout
-- Avoid repetition from previous batches
+- Generate as many relevant and high-quality Q&A pairs as the content supports, up to ${maxPairsToRequestInBatch}.
+- If generating multiple pairs, aim for a mix of roughly ${correctCountTarget} correct and ${incorrectCountTarget} incorrect answers.
+- Ensure variety in question types and complexity levels.
+- Focus on different aspects of the content for this batch, avoiding excessive repetition if this is not the first batch.
+- Maintain high quality standards: clear questions, accurate and comprehensive answers (for correct ones), plausible but clearly wrong answers (for incorrect ones).
 
 CRITICAL JSON FORMAT:
-- Respond with ONLY a valid JSON array
-- Start immediately with [ and end with ]
+- Respond with ONLY a valid JSON array.
+- Start immediately with [ and end with ].
 - Each object: {"user": "question", "model": "answer", "isCorrect": boolean, "confidence": number}
-- Properly escape all strings
-- No markdown, explanations, or code blocks
+- Properly escape all strings.
+- No markdown, explanations, or code blocks outside the JSON structure.
 
-CONTENT REFERENCE:
+CONTENT REFERENCE (Batch ${batchNumber}):
 ---
-${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for batch focus]' : ''}
+${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for this batch request, full content is larger]' : ''}
 ---
 
-Generate exactly ${batchSize} Q&A pairs now:`;
+Generate Q&A pairs now:`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `I understand. I will generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.` }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 8000, // Increased for batch processing
-          temperature: 0.6,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: `I understand. I will generate as many high-quality Q&A pairs as possible from the content, up to ${maxPairsToRequestInBatch} for batch ${batchNumber}, focusing on relevance and quality.` },
+        { role: 'user', content: userPrompt }
+      ], 0.6, 8000, undefined, { responseMimeType: 'application/json' });
 
-      const qaData = this.parseJsonResponse(response.text);
+      const qaData = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(qaData)) {
         throw new Error(`Batch ${batchNumber}: Response is not a valid JSON array`);
@@ -931,10 +914,6 @@ Generate exactly ${batchSize} Q&A pairs now:`;
     generatedQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const existingQuestions = generatedQAPairs.map(pair => pair.user);
     const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
@@ -1007,21 +986,13 @@ Return a JSON array of knowledge gap objects:
 ]`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 5000,
-          temperature: 0.3,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` },
+        { role: 'user', content: userPrompt }
+      ], 0.3, 5000, undefined, { responseMimeType: 'application/json' });
 
-      const gaps = this.parseJsonResponse(response.text);
+      const gaps = this.parseJsonResponse(response.content);
 
       if (!Array.isArray(gaps)) {
         throw new Error('Response is not a valid JSON array');
@@ -1057,10 +1028,6 @@ Return a JSON array of knowledge gap objects:
     referenceContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<ValidationResult> {
-    if (!this.ai) {
-      throw new Error('Gemini service not initialized');
-    }
-
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
     const systemPrompt = `You are an expert fact-checker and Q&A validator specializing in fine-tuning dataset quality assurance.
@@ -1079,7 +1046,7 @@ OBJECTIVE: Validate the accuracy, relevance, and quality of a synthetic Q&A pair
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-SYNTHETIC Q&A PAIR TO VALIDATE:
+SYNTHETIC Q&A PAIR:
 Question: "${syntheticPair.user}"
 Answer: "${syntheticPair.model}"
 Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
@@ -1117,21 +1084,13 @@ Provide validation assessment as JSON:
 }`;
 
     try {
-      const response: GenerateContentResponse = await this.ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [
-          { role: 'user', parts: [{ text: systemPrompt }] },
-          { role: 'model', parts: [{ text: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' }] },
-          { role: 'user', parts: [{ text: userPrompt }] }
-        ],
-        config: {
-          responseMimeType: 'application/json',
-          maxOutputTokens: 2000,
-          temperature: 0.2,
-        },
-      });
+      const response = await this.makeRequest([
+        { role: 'user', content: systemPrompt },
+        { role: 'assistant', content: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' },
+        { role: 'user', content: userPrompt }
+      ], 0.2, 2000, undefined, { responseMimeType: 'application/json' });
 
-      const validation = this.parseJsonResponse(response.text);
+      const validation = this.parseJsonResponse(response.content);
 
       if (typeof validation.isValid !== 'boolean' ||
           typeof validation.confidence !== 'number' ||

@@ -1,12 +1,15 @@
 import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } from '../types';
 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp'; // This IS Flash Lite - confirmed migration
-export const QA_PAIR_COUNT_TARGET = 100; // Minimum 100 Q&A pairs from original content (Gemini)
-export const SYNTHETIC_QA_TARGET_MIN = 50; // Minimum 50 synthetic pairs
-export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
 
-// Batch processing settings to avoid token limits
-export const QA_GENERATION_BATCH_SIZE = 25; // Generate 25 pairs per batch
+// export const QA_PAIR_COUNT_TARGET = 100; // No longer a strict target for initial generation
+// export const SYNTHETIC_QA_TARGET_MIN = 50; // No longer a strict target
+// export const SYNTHETIC_QA_TARGET = 75; // No longer a strict target
+export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range) - still used as a guideline for prompts
+
+
+// Batch processing settings
+export const QA_GENERATION_BATCH_SIZE = 25; // Max Q&A pairs to request from LLM in a single batch call for initial generation.
 export const MAX_CONTENT_LENGTH_PER_BATCH = 8000; // Max content length per batch
 export const MAX_OUTPUT_TOKENS_PER_BATCH = 8000; // Max output tokens per batch
 
@@ -22,9 +25,12 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-export const ACCEPTED_FILE_EXTENSIONS = '.txt,.md,.html,.jsonl,.pdf,.docx';
+export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
-export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
+export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
+// CRITICAL: Aligned with server-side processing limits to prevent 502 errors
+// Base64 encoding increases size by ~33%, so 4MB base64 limit = ~3MB original file limit
+export const BINARY_FILE_SIZE_LIMIT = 3 * 1024 * 1024; // 3MB for binary files (aligned with 4MB base64 server limit)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Zap, Search, HelpCircle, FlagTriangleRight, BookOpen, PenTool, Target, Brain, ChevronLeft, ChevronRight } from 'lucide-react';
 import { FileData, UrlData, FineTuningGoal } from './types';
-import { geminiService } from './services/geminiService';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
@@ -12,22 +11,13 @@ import { Alert } from './components/ui/Alert';
 import { Card, CardContent, CardHeader } from './components/ui/Card';
 import { Tooltip } from './components/ui/Tooltip';
 import { FINE_TUNING_GOALS } from './constants';
-
-// Conditional import for OpenRouter service
-let openRouterService: any = null;
-try {
-  import('./services/openRouterService').then(module => {
-    openRouterService = module.openRouterService;
-  });
-} catch (error) {
-  console.warn('[APP] OpenRouter service not available:', error);
-}
+// import { buildshipService } from './services/buildshipService'; // Buildship removed
 
 const App: React.FC = () => {
   const [files, setFiles] = useState<FileData[]>([]);
   const [urls, setUrls] = useState<UrlData[]>([]);
   const [enableWebAugmentation, setEnableWebAugmentation] = useState(false);
-  const [enableGapFilling, setEnableGapFilling] = useState(true);
+  const [enableGapFilling, setEnableGapFilling] = useState(false);
   const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('knowledge');
   const [currentGoalIndex, setCurrentGoalIndex] = useState(1); // Start with 'knowledge' (index 1)
   
@@ -103,20 +93,17 @@ const App: React.FC = () => {
         {/* Header */}
         <header className="text-center mb-12">
           <div className="flex items-center justify-center mb-6">
-            <Zap size={56} className="text-primary mr-4 animate-pulse" style={{
+            <Zap size={40} className="text-primary mr-4 animate-pulse" style={{
               filter: 'drop-shadow(0 0 5px #00FF41)',
               animation: 'glow-pulse 2s ease-in-out infinite alternate'
             }} />
             <h1 
-              className="text-5xl md:text-7xl font-black glitch font-mono tracking-wider"
-              data-text="FINE FORMAT"
+              className="text-3xl md:text-4xl font-bold font-mono tracking-wide text-primary"
               style={{
-                color: '#00FF41',
-                textShadow: '0 0 2px #00FF41, 0 0 4px #00FF41',
-                letterSpacing: '0.1em'
+                textShadow: '0 0 3px #00FF41'
               }}
             >
-              FINE FORMAT
+              Upload your knowledgebase. Download your dataset.
             </h1>
           </div>
           <div className="relative">
@@ -381,14 +368,14 @@ const App: React.FC = () => {
                   <label htmlFor="webAugmentation" className="text-foreground font-semibold cursor-pointer text-lg">
                     <span className="neon-text">ENHANCE</span> with Targeted Web Content
                   </label>
-                  <Tooltip content="AI will identify key themes from your content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
+                  <Tooltip content="AI will identify key themes from your preprocessed content and search for relevant information online to create a comprehensive 100+ Q&A dataset with both correct and incorrect answers for optimal fine-tuning." />
                 </div>
                 {enableWebAugmentation && (
                   <div className="mt-4 flex items-center text-accent font-medium">
                     <Search size={18} className="mr-3 animate-pulse" style={{
                       filter: 'drop-shadow(0 0 3px #00FFFF)'
                     }} />
-                    <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> - will enhance content quality and coverage
+                    <span className="neon-text-accent">THEME-BASED WEB SEARCH</span> - will enhance preprocessed content quality and coverage
                   </div>
                 )}
 
@@ -411,7 +398,7 @@ const App: React.FC = () => {
                   <label htmlFor="gapFilling" className="text-foreground font-semibold cursor-pointer text-lg">
                     <span className="neon-text-secondary">INTELLIGENT GAP FILLING</span> with Cross-Validated Synthetic Data
                   </label>
-                  <Tooltip content="After generating 100 Q&A pairs from your content, Gemini analyzes the dataset to identify knowledge gaps, then Nvidia Nemotron generates 50-100 additional synthetic Q&A pairs. Each synthetic pair is cross-validated by Gemini to ensure accuracy and quality before inclusion." />
+                  <Tooltip content="After generating 100 Q&A pairs from your preprocessed content, Gemini analyzes the dataset to identify knowledge gaps, then Nvidia Nemotron generates 50-100 additional synthetic Q&A pairs. Each synthetic pair is cross-validated by Gemini to ensure accuracy and quality before inclusion." />
                 </div>
                 {enableGapFilling && (
                   <div className="mt-4 space-y-2">
@@ -444,6 +431,8 @@ const App: React.FC = () => {
             >
               {isProcessing 
                 ? <span className="neon-text">GENERATING DATASET...</span>
+                // : !buildshipService.isReady() // Buildship removed
+                // ? <span className="text-error">BUILDSHIP NOT CONFIGURED</span>
                 : <span>
                     <span className="neon-text">GENERATE DATASET</span>
                     <span className="text-accent ml-2">({totalReadySources} source{totalReadySources !== 1 ? 's' : ''})</span>
@@ -484,7 +473,7 @@ const App: React.FC = () => {
         <footer className="text-center mt-20 pt-8 border-t border-border relative">
           <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-32 h-px bg-gradient-to-r from-transparent via-primary to-transparent"></div>
           <p className="text-accent text-sm mb-4 font-mono">
-            <span className="neon-text-accent">POWERED BY LEADING AI MODELS</span>
+            <span className="neon-text-accent">POWERED BY BUILDSHIP + LEADING AI MODELS</span>
           </p>
           <p className="text-gray-400 text-sm font-mono mb-2">
             &copy; {new Date().getFullYear()} DappGoose Labs DAO.

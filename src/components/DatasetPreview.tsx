@@ -343,6 +343,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                 <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
                 WEB SOURCES USED ({webSources.length})
               </h4>
+ 
               <Button variant="outline" size="sm" onClick={() => setShowCitations(!showCitations)} className="ml-4 font-mono">
                 {showCitations ? 'HIDE SOURCES' : 'SHOW SOURCES'}
               </Button>
@@ -351,7 +352,9 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
               Content was enhanced with information from these web sources
             </p>
           </CardHeader>
+
           {showCitations && (
+
             <CardContent>
               <div className="space-y-3">
                 {webSources.map((chunk, index) => (
