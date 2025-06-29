@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { CheckCircle, AlertCircle, Clock, Hourglass } from 'lucide-react';
 import { Card, CardContent } from './ui/Card';
 import { ThoughtBubble } from './ui/ThoughtBubble';
 import { ProgressBar } from './ui/ProgressBar';
@@ -65,7 +65,7 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
             {isProcessing ? (
-              <ThoughtBubble size="lg" />
+              <Hourglass size={32} className="text-primary animate-spin" style={{ filter: 'drop-shadow(0 0 5px currentColor)' }} />
             ) : isError ? (
               <AlertCircle 
                 size={32} 

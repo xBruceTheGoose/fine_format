@@ -39,6 +39,7 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<FineTuningMethod>('generic');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showCitations, setShowCitations] = useState(false);
 
   const selectedConfig = FINE_TUNING_METHODS.find(m => m.id === selectedMethod);
 
@@ -161,26 +162,30 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
             )}
           </div>
 
-          {/* Dataset Composition */}
-          {syntheticPairCount > 0 && (
+          {/* Dataset Composition & Sources */}
+          {(originalPairCount > 0 || syntheticPairCount > 0 || validatedPairCount > 0) && (
             <div className="mb-8 p-4 bg-surface/30 rounded-lg border border-border">
               <h4 className="text-lg font-bold text-primary mb-3 flex items-center font-mono tracking-wide">
-                <Brain size={20} className="mr-3 text-secondary" style={{ filter: 'drop-shadow(0 0 3px #dc1aff)' }} />
-                DATASET COMPOSITION
+                <Brain size={20} className="mr-3 text-primary" style={{ filter: 'drop-shadow(0 0 3px #00FF41)' }} />
+                DATASET COMPOSITION & SOURCES
               </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm font-mono">
+              <div className="space-y-2 text-sm font-mono">
                 <div>
-                  <span className="text-primary font-bold">Original Q&A:</span>
+                  <span className="text-primary font-bold">Sourced (from your content):</span>
                   <span className="text-foreground ml-2">{originalPairCount} pairs</span>
                 </div>
-                <div>
-                  <span className="text-secondary font-bold">Synthetic Generated:</span>
-                  <span className="text-foreground ml-2">{syntheticPairCount} pairs</span>
-                </div>
-                <div>
-                  <span className="text-success font-bold">Cross-Validated:</span>
-                  <span className="text-foreground ml-2">{validatedPairCount} pairs included</span>
-                </div>
+                { (gapFillingEnabled || syntheticPairCount > 0 || validatedPairCount > 0) && (
+                  <>
+                    <div>
+                      <span className="text-secondary font-bold">Synthetic (AI-generated for gaps):</span>
+                      <span className="text-foreground ml-2">{syntheticPairCount} pairs generated</span>
+                    </div>
+                    <div>
+                      <span className="text-success font-bold">Validated Synthetic Included:</span>
+                      <span className="text-foreground ml-2">{validatedPairCount} pairs included</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -274,6 +279,11 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
                     </div>
                   </div>
                   <div className="flex items-center space-x-3 ml-6">
+                    {(pair.source === 'original' || !pair.source) && (
+                      <span className="text-xs px-2 py-1 bg-primary/20 text-primary rounded font-bold font-mono border border-primary/30">
+                        SOURCED
+                      </span>
+                    )}
                     {pair.source === 'synthetic' && (
                       <span className="text-xs px-2 py-1 bg-secondary/20 text-secondary rounded font-bold font-mono border border-secondary/30">
                         SYNTHETIC
@@ -328,35 +338,42 @@ export const DatasetPreview: React.FC<DatasetPreviewProps> = ({
       {webSources.length > 0 && (
         <Card>
           <CardHeader>
-            <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
-              <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
-              WEB SOURCES USED ({webSources.length})
-            </h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xl font-bold text-primary flex items-center font-mono tracking-wide">
+                <Search size={24} className="mr-3 text-accent" style={{ filter: 'drop-shadow(0 0 3px #00FFFF)' }} />
+                WEB SOURCES USED ({webSources.length})
+              </h4>
+              <Button variant="outline" size="sm" onClick={() => setShowCitations(!showCitations)} className="ml-4 font-mono">
+                {showCitations ? 'HIDE SOURCES' : 'SHOW SOURCES'}
+              </Button>
+            </div>
             <p className="text-foreground font-mono mt-2">
               Content was enhanced with information from these web sources
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {webSources.map((chunk, index) => (
-                chunk.web && (
-                  <a
-                    key={index}
-                    href={chunk.web.uri}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block p-4 bg-surface/50 rounded-lg font-mono text-accent hover:text-primary hover:bg-surface/70 transition-all duration-300 border border-border hover:border-primary/50"
-                    style={{
-                      background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
-                    }}
-                  >
-                    <div className="font-bold tracking-wide">{chunk.web.title || 'Web Source'}</div>
-                    <div className="text-muted text-sm mt-1 truncate">{chunk.web.uri}</div>
-                  </a>
-                )
-              ))}
-            </div>
-          </CardContent>
+          {showCitations && (
+            <CardContent>
+              <div className="space-y-3">
+                {webSources.map((chunk, index) => (
+                  chunk.web && (
+                    <a
+                      key={index}
+                      href={chunk.web.uri}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-4 bg-surface/50 rounded-lg font-mono text-accent hover:text-primary hover:bg-surface/70 transition-all duration-300 border border-border hover:border-primary/50"
+                      style={{
+                        background: 'linear-gradient(135deg, rgba(26, 26, 26, 0.5), rgba(26, 26, 26, 0.3))'
+                      }}
+                    >
+                      <div className="font-bold tracking-wide">{chunk.web.title || 'Web Source'}</div>
+                      <div className="text-muted text-sm mt-1 truncate">{chunk.web.uri}</div>
+                    </a>
+                  )
+                ))}
+              </div>
+            </CardContent>
+          )}
         </Card>
       )}
 

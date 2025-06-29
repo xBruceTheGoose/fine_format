@@ -1,7 +1,16 @@
 import { useState, useCallback } from 'react';
 import { FileData, UrlData, ProcessedData, FineTuningGoal, QAPair, KnowledgeGap, SyntheticQAPair } from '../types';
 import { geminiService } from '../services/geminiService';
-import { SYNTHETIC_QA_TARGET_MIN, SYNTHETIC_QA_TARGET_MAX } from '../constants';
+
+const playCompletionSound = () => {
+  const audio = new Audio('/20591276_cute-cartoon-character-voice-ta-da_by_applehillstudios_preview.mp3');
+  audio.play().catch(error => {
+    console.warn('Audio notification playback failed:', error);
+    // Browsers might block autoplay if user hasn't interacted with the page,
+    // or if the feature is disabled. This warning is for developers.
+  });
+};
+import { SYNTHETIC_QA_TARGET_MIN } from '../constants';
 import { metricsService } from '../services/metricsService';
 
 // Create promises for conditional imports without top-level await
@@ -336,11 +345,14 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             // Calculate pairs per gap to aim for the total minimum SYNTHETIC_QA_TARGET_MIN
             const totalGaps = identifiedGaps.length;
             // Ensure SYNTHETIC_QA_TARGET_MIN is defined. If not, default to a reasonable number like 50.
-            const syntheticQaTargetMin = SYNTHETIC_QA_TARGET_MIN || 50;
-            const targetPairsPerGap = Math.ceil(syntheticQaTargetMin / totalGaps);
+            const syntheticQaTargetMin = SYNTHETIC_QA_TARGET_MIN || 50; // This remains as a baseline check for overall generation.
+            const DESIRED_PAIRS_PER_GAP = 12; // Preferred minimum per gap
+            // Ensure syntheticQaTargetMin is defined (it's from constants, should be fine)
+            const pairsToMeetOverallMinSynthetic = totalGaps > 0 ? Math.ceil(syntheticQaTargetMin / totalGaps) : DESIRED_PAIRS_PER_GAP;
+            const targetPairsPerGap = Math.max(DESIRED_PAIRS_PER_GAP, pairsToMeetOverallMinSynthetic);
             let allSyntheticPairs: SyntheticQAPair[] = [];
 
-            console.log(`[DATASET_GENERATION] Aiming for a total of at least ${syntheticQaTargetMin} synthetic pairs across ${totalGaps} gaps. Target per gap: ${targetPairsPerGap}`);
+            console.log(`[DATASET_GENERATION] Aiming for ${targetPairsPerGap} synthetic pairs per gap across ${totalGaps} gaps. Total potential synthetic pairs: ${totalGaps * targetPairsPerGap}`);
 
             for (let gapIndex = 0; gapIndex < totalGaps; gapIndex++) {
               const gap = identifiedGaps[gapIndex];
@@ -378,9 +390,15 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             }
 
             syntheticPairCount = allSyntheticPairs.length;
-            console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs from ${totalGaps} gaps. Target minimum was ${syntheticQaTargetMin}.`);
-            if (syntheticPairCount < syntheticQaTargetMin) {
-              console.warn(`[DATASET_GENERATION] Generated ${syntheticPairCount} synthetic pairs, which is less than the target minimum of ${syntheticQaTargetMin}.`);
+            const expectedSyntheticPairs = totalGaps * targetPairsPerGap;
+            if (syntheticPairCount < expectedSyntheticPairs) {
+              console.warn(`[DATASET_GENERATION] Generated ${syntheticPairCount} synthetic pairs, less than the aimed for ${expectedSyntheticPairs} (${targetPairsPerGap} per gap for ${totalGaps} gaps).`);
+            } else if (syntheticPairCount > 0) {
+              console.log(`[DATASET_GENERATION] Successfully generated ${syntheticPairCount} synthetic pairs, meeting or exceeding the aim of ${targetPairsPerGap} per gap.`);
+            }
+            // Also check against the overall minimum if desired, though the per-gap aim is primary now.
+            if (syntheticPairCount < syntheticQaTargetMin && totalGaps > 0) { // Check totalGaps > 0 to avoid warning if no gaps were found
+                console.warn(`[DATASET_GENERATION] Total synthetic pairs (${syntheticPairCount}) is less than the overall minimum target of ${syntheticQaTargetMin}.`);
             }
 
             // Step 7: Generate validation context for efficient validation
@@ -550,6 +568,9 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       
       setCurrentStep(completionMessage);
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
+
+      // Play sound notification
+      playCompletionSound();
 
       // Send completion notification
       if (notificationService) {
