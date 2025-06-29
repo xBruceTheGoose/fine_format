@@ -736,78 +736,71 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    // Determine batch size, ensuring it's defined.
-    const batchSize = 25; // Standard batch size for Q&A generation
+    const batchSize = 25; // Standard batch size for Q&A generation. Max pairs per LLM call.
     const allPairs: QAPair[] = [];
-    let batch = 0;
+    let currentBatchNumber = 0;
+    const MAX_CONSECUTIVE_EMPTY_BATCHES = 2;
+    const OVERALL_MAX_BATCHES_ATTEMPT = 15; // Safety net to prevent runaway loops, e.g. 15*25 = 375 pairs max from one doc.
+    let consecutiveEmptyBatches = 0;
 
-    // Calculate an initial estimate for totalBatches for logging and a safe upper limit
-    const initialEstimatedBatches = Math.ceil(QA_PAIR_COUNT_TARGET / batchSize);
-    // Allow more attempts for better coverage - increased from 3 to 6 extra attempts
-    const MAX_BATCHES_TO_ATTEMPT = initialEstimatedBatches + 6;
+    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
 
-    console.log(`[GEMINI] Generating Q&A pairs, aiming for at least ${QA_PAIR_COUNT_TARGET} pairs. Initial estimate: ${initialEstimatedBatches} batches. Max attempts: ${MAX_BATCHES_TO_ATTEMPT}.`);
-
-    while (batch < MAX_BATCHES_TO_ATTEMPT && allPairs.length < QA_PAIR_COUNT_TARGET) {
-      const pairsToGenerateInThisBatch = batchSize; // Request a full batch each time
-      
-      console.log(`[GEMINI] Generating batch ${batch + 1}/${MAX_BATCHES_TO_ATTEMPT}. Requesting ${pairsToGenerateInThisBatch} pairs. Current total: ${allPairs.length}`);
+    while (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
+      currentBatchNumber++;
+      console.log(`[GEMINI] Generating batch ${currentBatchNumber}/${OVERALL_MAX_BATCHES_ATTEMPT}. Current total pairs: ${allPairs.length}`);
 
       try {
         const batchPairs = await this.generateQAPairsBatch(
-          content, 
-          themes, 
-          fineTuningGoal, 
-          pairsToGenerateInThisBatch, // Use fixed batchSize
-          batch + 1, // Current batch number
-          MAX_BATCHES_TO_ATTEMPT // Pass max attempts for logging/prompt consistency in generateQAPairsBatch
+          content,
+          themes,
+          fineTuningGoal,
+          batchSize, // Max pairs to request in this batch
+          currentBatchNumber
         );
         
-        allPairs.push(...batchPairs);
-        console.log(`[GEMINI] Batch ${batch + 1} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
-
-        // Stop if we've reached our target
-        if (allPairs.length >= QA_PAIR_COUNT_TARGET) {
-          console.log(`[GEMINI] Target of ${QA_PAIR_COUNT_TARGET} pairs reached with ${allPairs.length} pairs`);
-          break;
-        }
-
-        // Stop if batch returned 0 pairs after reaching initial estimated batches
-        if (batchPairs.length === 0 && batch >= initialEstimatedBatches) {
-          console.log("[GEMINI] Current batch returned 0 pairs after reaching initial estimated batches. Stopping further generation in this phase.");
-          break;
+        if (batchPairs.length > 0) {
+          allPairs.push(...batchPairs);
+          consecutiveEmptyBatches = 0; // Reset counter if pairs are found
+          console.log(`[GEMINI] Batch ${currentBatchNumber} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
+        } else {
+          consecutiveEmptyBatches++;
+          console.log(`[GEMINI] Batch ${currentBatchNumber} returned 0 pairs.`);
+          if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES) {
+            console.log(`[GEMINI] Stopping Q&A generation after ${MAX_CONSECUTIVE_EMPTY_BATCHES} consecutive empty batches.`);
+            break;
+          }
         }
 
         // Small delay between batches to avoid rate limiting, only if not the last attempt
-        if (batch < MAX_BATCHES_TO_ATTEMPT - 1) {
+        if (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {
-        console.error(`[GEMINI] Batch ${batch + 1} failed:`, error);
-        // Continue with next batch on failure
+        console.error(`[GEMINI] Batch ${currentBatchNumber} failed:`, error.message);
+        // Decide if we should break or continue after a batch error. For now, let's continue for a few attempts.
+        consecutiveEmptyBatches++; // Count error as an empty batch for termination purposes
+        if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES + 1) { // Allow one more attempt after error
+            console.error(`[GEMINI] Stopping Q&A generation due to multiple consecutive failed/empty batches.`);
+            break;
+        }
       }
-      batch++;
     }
 
-    if (allPairs.length < QA_PAIR_COUNT_TARGET) {
-      console.warn(`[GEMINI] Generated ${allPairs.length} pairs, which is less than the target of ${QA_PAIR_COUNT_TARGET} after ${batch} batches.`);
+    if (currentBatchNumber >= OVERALL_MAX_BATCHES_ATTEMPT) {
+      console.warn(`[GEMINI] Reached max batch attempt limit (${OVERALL_MAX_BATCHES_ATTEMPT}). Generated ${allPairs.length} pairs.`);
     }
 
-    if (batch >= MAX_BATCHES_TO_ATTEMPT && allPairs.length < QA_PAIR_COUNT_TARGET) {
-      console.warn(`[GEMINI] Reached max batches limit (${MAX_BATCHES_TO_ATTEMPT}) but still under target pairs. Generated: ${allPairs.length}`);
+    if (allPairs.length === 0) {
+        console.warn('[GEMINI] Failed to generate any Q&A pairs for this content.');
+        // Not throwing an error here, as some files might genuinely not yield Q&A.
+        // The calling function in useDatasetGeneration should handle cases with no Q&A pairs.
     }
 
-    if (allPairs.length === 0 && QA_PAIR_COUNT_TARGET > 0) { // Check if target was > 0 to avoid error for 0 target
-        throw new Error('Failed to generate any Q&A pairs across all attempted batches.');
-    }
-
-    // Shuffle the final array to randomize order
     const shuffledPairs = this.shuffleArray(allPairs);
 
-    console.log('[GEMINI] Q&A generation process completed:', {
-      target: QA_PAIR_COUNT_TARGET,
+    console.log('[GEMINI] Q&A generation process completed for this content portion:', {
       generated: shuffledPairs.length,
-      batchesAttempted: batch,
+      batchesAttempted: currentBatchNumber,
       correct: shuffledPairs.filter(p => p.isCorrect).length,
       incorrect: shuffledPairs.filter(p => !p.isCorrect).length
     });
@@ -819,20 +812,21 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     content: string,
     themes: string[],
     fineTuningGoal: FineTuningGoal,
-    batchSize: number,
-    batchNumber: number,
-    totalBatches: number
+    maxPairsToRequestInBatch: number, // Renamed from batchSize
+    batchNumber: number
+    // totalBatches parameter removed as it's no longer fixed
   ): Promise<QAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const themeGuidance = themes.length > 0 
-      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure coverage of these themes in this batch.`
+    const themeGuidance = themes.length > 0
+      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure good coverage of these themes if relevant to the current content portion.`
       : '';
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
-    const incorrectCount = Math.max(1, Math.ceil(batchSize * INCORRECT_ANSWER_RATIO));
-    const correctCount = batchSize - incorrectCount;
+    // Dynamic incorrect count based on how many we ask for, but still a ratio
+    const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestInBatch * INCORRECT_ANSWER_RATIO));
+    const correctCountTarget = maxPairsToRequestInBatch - incorrectCountTarget;
 
-    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
+    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning. Your goal is to extract as much value as possible from the provided text by generating relevant and diverse Q&A pairs.
 
 EXPERTISE:
 - Question generation across multiple difficulty levels and types
@@ -841,9 +835,9 @@ EXPERTISE:
 - Quality assessment and consistency maintenance
 - Dataset balance and discrimination training
 
-OBJECTIVE: Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}, optimized for ${goalConfig?.name} fine-tuning.`;
+OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch. Focus on relevance, quality, and diversity. This is batch ${batchNumber} of a series.`;
 
-    const userPrompt = `Generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.
+    const userPrompt = `Generate as many high-quality Q&A pairs as you can from the provided content, up to a maximum of ${maxPairsToRequestInBatch} for this batch (batch number ${batchNumber}). Aim for approximately ${correctCountTarget} CORRECT answers and ${incorrectCountTarget} INCORRECT answers if you generate a full batch, but prioritize quality and relevance over exact counts.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
@@ -851,30 +845,30 @@ FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 ${goalSpecificGuidance}
 
 BATCH REQUIREMENTS:
-- Generate exactly ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
-- Ensure variety in question types and complexity levels
-- Focus on different aspects of the content for this batch
-- Maintain high quality standards throughout
-- Avoid repetition from previous batches
+- Generate as many relevant and high-quality Q&A pairs as the content supports, up to ${maxPairsToRequestInBatch}.
+- If generating multiple pairs, aim for a mix of roughly ${correctCountTarget} correct and ${incorrectCountTarget} incorrect answers.
+- Ensure variety in question types and complexity levels.
+- Focus on different aspects of the content for this batch, avoiding excessive repetition if this is not the first batch.
+- Maintain high quality standards: clear questions, accurate and comprehensive answers (for correct ones), plausible but clearly wrong answers (for incorrect ones).
 
 CRITICAL JSON FORMAT:
-- Respond with ONLY a valid JSON array
-- Start immediately with [ and end with ]
+- Respond with ONLY a valid JSON array.
+- Start immediately with [ and end with ].
 - Each object: {"user": "question", "model": "answer", "isCorrect": boolean, "confidence": number}
-- Properly escape all strings
-- No markdown, explanations, or code blocks
+- Properly escape all strings.
+- No markdown, explanations, or code blocks outside the JSON structure.
 
-CONTENT REFERENCE:
+CONTENT REFERENCE (Batch ${batchNumber}):
 ---
-${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for batch focus]' : ''}
+${content.substring(0, 8000)}${content.length > 8000 ? '\n[Content truncated for this batch request, full content is larger]' : ''}
 ---
 
-Generate exactly ${batchSize} Q&A pairs now:`;
+Generate Q&A pairs now:`;
 
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: `I understand. I will generate exactly ${batchSize} high-quality Q&A pairs for batch ${batchNumber}/${totalBatches}.` },
+        { role: 'assistant', content: `I understand. I will generate as many high-quality Q&A pairs as possible from the content, up to ${maxPairsToRequestInBatch} for batch ${batchNumber}, focusing on relevance and quality.` },
         { role: 'user', content: userPrompt }
       ], 0.6, 8000, undefined, { responseMimeType: 'application/json' });
 

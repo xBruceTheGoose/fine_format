@@ -513,15 +513,16 @@ Respond with ONLY a valid JSON object:
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    pairsPerGap: number = 10
+    maxPairsToRequestThisCall: number = 15 // Renamed from pairsPerGap, represents max for this specific call
   ): Promise<SyntheticQAPair[]> {
-    console.log(`[OPENROUTER] Generating ${pairsPerGap} synthetic Q&A pairs for gap: ${knowledgeGap.id}`);
+    console.log(`[OPENROUTER] Generating up to ${maxPairsToRequestThisCall} synthetic Q&A pairs for gap: ${knowledgeGap.id}`);
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const incorrectCount = Math.max(1, Math.ceil(pairsPerGap * INCORRECT_ANSWER_RATIO));
-    const correctCount = pairsPerGap - incorrectCount;
+    // Dynamic incorrect count, aiming for a ratio of what might be returned
+    const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestThisCall * INCORRECT_ANSWER_RATIO));
+    const correctCountTarget = maxPairsToRequestThisCall - incorrectCountTarget;
 
-    const systemPrompt = `You are an expert synthetic Q&A generator specializing in creating high-quality training data for fine-tuning language models.
+    const systemPrompt = `You are an expert synthetic Q&A generator specializing in creating high-quality training data for fine-tuning language models. Your goal is to generate as many relevant and high-quality Q&A pairs as possible to address the specified knowledge gap, up to the requested maximum.
 
 EXPERTISE:
 - Domain knowledge synthesis
@@ -530,16 +531,15 @@ EXPERTISE:
 - Knowledge gap targeting
 - Fine-tuning dataset construction
 
-OBJECTIVE: Generate exactly ${pairsPerGap} synthetic Q&A pairs that specifically address the identified knowledge gap while maintaining high quality and relevance for ${goalConfig?.name} fine-tuning.
+OBJECTIVE: Generate as many high-quality synthetic Q&A pairs as possible (up to ${maxPairsToRequestThisCall}) that specifically address the identified knowledge gap. Prioritize relevance and quality for ${goalConfig?.name} fine-tuning.
 
 QUALITY STANDARDS:
-- Questions must be natural, clear, and appropriately challenging
-- Answers must be comprehensive yet concise
-- Content must be factually grounded in the provided reference material
-- Incorrect answers should be plausible but clearly wrong to aid model discrimination
-- All pairs must directly address the specified knowledge gap`;
+- Questions must be natural, clear, and appropriately challenging.
+- Answers must be comprehensive yet concise, grounded in the reference material.
+- Incorrect answers should be plausible but clearly wrong.
+- All pairs must directly and effectively address the specified knowledge gap.`;
 
-    const userPrompt = `Generate exactly ${pairsPerGap} high-quality synthetic Q&A pairs to address this specific knowledge gap.
+    const userPrompt = `Generate as many high-quality synthetic Q&A pairs as you can (up to a maximum of ${maxPairsToRequestThisCall}) to address this specific knowledge gap. If generating multiple pairs, aim for a mix of roughly ${correctCountTarget} correct and ${incorrectCountTarget} incorrect answers, but prioritize quality and relevance over exact counts.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
@@ -553,12 +553,13 @@ Suggested Question Types: ${knowledgeGap.suggestedQuestionTypes.join(', ')}
 Related Concepts: ${knowledgeGap.relatedConcepts.join(', ')}
 
 GENERATION REQUIREMENTS:
-- Generate exactly ${correctCount} CORRECT answers and ${incorrectCount} INCORRECT answers
-- Questions should vary in complexity and approach
-- Cover different aspects of the knowledge gap
-- Ensure answers are appropriate for the ${goalConfig?.name} objective
-- Incorrect answers should be plausible but factually wrong
-- All content must be grounded in the reference material
+- Generate as many relevant and high-quality Q&A pairs as the content and gap allow, up to ${maxPairsToRequestThisCall}.
+- If generating multiple pairs, aim for a mix of approximately ${correctCountTarget} correct and ${incorrectCountTarget} incorrect answers.
+- Questions should vary in complexity and approach.
+- Cover different aspects of the knowledge gap thoroughly.
+- Ensure answers are appropriate for the ${goalConfig?.name} objective.
+- Incorrect answers should be plausible but factually wrong.
+- All content must be grounded in the provided reference material.
 
 REFERENCE CONTENT:
 ---
@@ -585,7 +586,7 @@ EXAMPLE FORMAT:
   }
 ]
 
-Generate exactly ${pairsPerGap} Q&A pairs now:`;
+Generate Q&A pairs now:`;
 
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
@@ -631,7 +632,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       }));
 
       console.log(`[OPENROUTER] Gap ${knowledgeGap.id} generation completed:`, {
-        requested: pairsPerGap,
+        requested: maxPairsToRequestThisCall,
         generated: syntheticPairs.length,
         valid: validPairs.length,
         correct: validPairs.filter(p => p.isCorrect).length,
@@ -657,7 +658,9 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    targetCount: number = SYNTHETIC_QA_TARGET,
+    // targetCount parameter is no longer used to drive the number of pairs per gap directly.
+    // The calling function in useDatasetGeneration now passes maxPairsToRequestPerGapCall to generateSyntheticQAPairsForGap.
+    // This function (generateSyntheticQAPairs) will iterate through gaps and call the single-gap function.
     onProgress?: (current: number, total: number, gapId: string) => void
   ): Promise<SyntheticQAPair[]> {
     console.log('[OPENROUTER] Starting individual gap-based synthetic Q&A generation');
@@ -665,7 +668,6 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       contentLength: combinedContent.length,
       gapCount: knowledgeGaps.length,
       fineTuningGoal,
-      targetCount
     });
     
     if (knowledgeGaps.length === 0) {
@@ -673,23 +675,18 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       return [];
     }
 
-    // Calculate minimum pairs per gap to reach SYNTHETIC_QA_TARGET
     const totalGaps = knowledgeGaps.length;
-    const minPairsPerGap = Math.max(8, Math.ceil(targetCount / totalGaps)); // Minimum 8 pairs per gap
+    const maxPairsToRequestPerGapCall = 15; // Consistent with the single gap function's default/expectation
     let allSyntheticPairs: SyntheticQAPair[] = [];
-
-    console.log(`[OPENROUTER] Targeting ${minPairsPerGap} pairs per gap for ${totalGaps} gaps`);
-
     const failedGaps: string[] = [];
 
-    // Process each gap individually
+    console.log(`[OPENROUTER] Processing ${totalGaps} gaps, requesting up to ${maxPairsToRequestPerGapCall} pairs per gap.`);
+
     for (let i = 0; i < totalGaps; i++) {
       const gap = knowledgeGaps[i];
       
       try {
         console.log(`[OPENROUTER] Processing gap ${i + 1}/${totalGaps}: ${gap.id}`);
-        
-        // Report progress
         if (onProgress) {
           onProgress(i, totalGaps, gap.id);
         }
@@ -698,7 +695,7 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
           combinedContent,
           gap,
           fineTuningGoal,
-          minPairsPerGap
+          maxPairsToRequestPerGapCall
         );
 
         if (gapPairs.length > 0) {
@@ -708,19 +705,16 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
           console.warn(`[OPENROUTER] No synthetic pairs generated for gap ${gap.id}`);
         }
 
-        // Add a small delay between requests to avoid rate limiting
         if (i < totalGaps - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 second delay
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
 
       } catch (error: any) {
         console.error(`[OPENROUTER] Failed to generate pairs for gap ${gap.id}:`, error);
         failedGaps.push(gap.id);
-        // Continue with other gaps instead of failing completely
       }
     }
 
-    // Report final progress
     if (onProgress) {
       onProgress(totalGaps, totalGaps, 'completed');
     }
@@ -738,11 +732,12 @@ Generate exactly ${pairsPerGap} Q&A pairs now:`;
       console.warn('[OPENROUTER] Some gaps failed to generate pairs:', failedGaps);
     }
 
-    if (allSyntheticPairs.length === 0) {
-      throw new Error('No synthetic Q&A pairs could be generated for any knowledge gaps');
-    }
+    // Don't throw error if no pairs are generated overall, could be valid if content is sparse or gaps are hard to fill.
+    // The UI/calling function can decide how to handle zero synthetic pairs.
+    // if (allSyntheticPairs.length === 0 && knowledgeGaps.length > 0) {
+    //   console.warn('No synthetic Q&A pairs could be generated for any knowledge gaps');
+    // }
 
-    // Shuffle the final array to mix pairs from different gaps
     return this.shuffleArray(allSyntheticPairs);
   }
 
