@@ -6,8 +6,7 @@ interface RequestBody {
   fileName?: string;
 }
 
-// Approx 4MB limit for base64 string (equates to ~3MB binary)
-// Client-side limit is much smaller (200KB for binary -> ~266KB base64), this is a server safety net.
+// 4MB limit for base64 string (equates to ~3MB binary)
 const MAX_BASE64_SIZE = 4 * 1024 * 1024;
 
 export const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
@@ -16,7 +15,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*', // Adjust for production
+        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
@@ -45,18 +44,20 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     }
 
     if (base64Data.length > MAX_BASE64_SIZE) {
-        return {
-          statusCode: 413, // Payload Too Large
-          body: JSON.stringify({ error: `Base64 data size (${(base64Data.length / 1024).toFixed(1)}KB) exceeds server limit of ${(MAX_BASE64_SIZE / 1024).toFixed(1)}KB.` }),
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        };
+      return {
+        statusCode: 413,
+        body: JSON.stringify({ 
+          error: `Base64 data size (${(base64Data.length / 1024).toFixed(1)}KB) exceeds server limit of ${(MAX_BASE64_SIZE / 1024).toFixed(1)}KB.`,
+          type: 'PAYLOAD_TOO_LARGE'
+        }),
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      };
     }
 
     const docxBuffer = Buffer.from(base64Data, 'base64');
-
     console.log(`[PROCESS-DOCX] Processing ${fileName}, buffer size: ${docxBuffer.length} bytes`);
 
-    // Set a timeout for mammoth processing
+    // Set timeout for mammoth processing with proper error handling
     const processingPromise = mammoth.extractRawText({ buffer: docxBuffer });
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('DOCX processing timed out after 25 seconds')), 25000)
@@ -69,19 +70,26 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       throw new Error('Failed to extract text content from DOCX. The document might be corrupted or empty.');
     }
 
-    // mammoth may also return messages (warnings/errors during conversion)
-    if (result.messages && result.messages.length > 0) {
-        console.warn(`[PROCESS-DOCX] Messages from Mammoth for ${fileName}:`, result.messages);
+    // Validate extracted text quality
+    const cleanText = result.value.trim();
+    if (cleanText.length < 50) {
+      throw new Error('DOCX contains insufficient text content. Document may be corrupted or empty.');
     }
 
-    console.log(`[PROCESS-DOCX] Successfully extracted ${result.value.length} characters from ${fileName}`);
+    // Log mammoth messages if any
+    if (result.messages && result.messages.length > 0) {
+      console.warn(`[PROCESS-DOCX] Mammoth messages for ${fileName}:`, result.messages);
+    }
+
+    console.log(`[PROCESS-DOCX] Successfully extracted ${cleanText.length} characters from ${fileName}`);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        extractedText: result.value,
+        extractedText: cleanText,
         messages: result.messages,
         fileName,
+        success: true
       }),
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     };
@@ -92,11 +100,14 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     let statusCode = 500;
 
     if (error.message?.includes('timeout')) {
-        errorMessage = 'DOCX processing timed out. The document may be too complex or large.';
-        statusCode = 408; // Request Timeout
+      errorMessage = 'DOCX processing timed out. The document may be too complex or large.';
+      statusCode = 408;
     } else if (error.message?.includes('corrupted') || error.message?.includes('invalid')) {
-        errorMessage = 'Invalid or corrupted DOCX file.';
-        statusCode = 400; // Bad Request
+      errorMessage = 'Invalid or corrupted DOCX file.';
+      statusCode = 400;
+    } else if (error.message?.includes('insufficient text')) {
+      errorMessage = 'Could not extract sufficient text. The document may be corrupted or empty.';
+      statusCode = 422;
     }
 
     return {
@@ -104,7 +115,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({
         error: errorMessage,
         details: error.message || 'No further details.',
-        fileName: event.body ? (JSON.parse(event.body).fileName || 'unknown') : 'unknown'
+        fileName: event.body ? (JSON.parse(event.body).fileName || 'unknown') : 'unknown',
+        success: false
       }),
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     };

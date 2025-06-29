@@ -1,13 +1,12 @@
 import { Handler, HandlerEvent, HandlerContext } from '@netlify/functions';
-import pdf from 'pdf-parse/lib/pdf-parse.js'; // Reverted to specific path to test regression
+import pdf from 'pdf-parse';
 
 interface RequestBody {
   base64Data: string;
   fileName?: string;
 }
 
-// Approx 4MB limit for base64 string (equates to ~3MB binary)
-// Client-side limit is much smaller (200KB for binary -> ~266KB base64), this is a server safety net.
+// 4MB limit for base64 string (equates to ~3MB binary)
 const MAX_BASE64_SIZE = 4 * 1024 * 1024;
 
 export const handler: Handler = async (event: HandlerEvent, context: HandlerContext) => {
@@ -16,7 +15,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     return {
       statusCode: 200,
       headers: {
-        'Access-Control-Allow-Origin': '*', // Adjust for production
+        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'Content-Type',
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
       },
@@ -45,19 +44,25 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     }
 
     if (base64Data.length > MAX_BASE64_SIZE) {
-        return {
-          statusCode: 413, // Payload Too Large
-          body: JSON.stringify({ error: `Base64 data size (${(base64Data.length / 1024).toFixed(1)}KB) exceeds server limit of ${(MAX_BASE64_SIZE / 1024).toFixed(1)}KB.` }),
-          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-        };
+      return {
+        statusCode: 413,
+        body: JSON.stringify({ 
+          error: `Base64 data size (${(base64Data.length / 1024).toFixed(1)}KB) exceeds server limit of ${(MAX_BASE64_SIZE / 1024).toFixed(1)}KB.`,
+          type: 'PAYLOAD_TOO_LARGE'
+        }),
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      };
     }
 
     const pdfBuffer = Buffer.from(base64Data, 'base64');
-
     console.log(`[PROCESS-PDF] Processing ${fileName}, buffer size: ${pdfBuffer.length} bytes`);
 
-    // Set a timeout for pdf-parse, as it can hang on complex/corrupted files
-    const parsingPromise = pdf(pdfBuffer);
+    // Set timeout for pdf-parse with proper error handling
+    const parsingPromise = pdf(pdfBuffer, {
+      max: 0, // Parse all pages
+      version: 'v1.10.100' // Specify version for consistency
+    });
+    
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('PDF parsing timed out after 25 seconds')), 25000)
     );
@@ -69,15 +74,22 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       throw new Error('Failed to extract text content from PDF. The document might be image-based or corrupted.');
     }
 
-    console.log(`[PROCESS-PDF] Successfully extracted ${data.text.length} characters from ${fileName}`);
+    // Validate extracted text quality
+    const cleanText = data.text.trim();
+    if (cleanText.length < 50) {
+      throw new Error('PDF contains insufficient text content. Document may be image-based or corrupted.');
+    }
+
+    console.log(`[PROCESS-PDF] Successfully extracted ${cleanText.length} characters from ${fileName}`);
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        extractedText: data.text,
+        extractedText: cleanText,
         numPages: data.numpages,
-        info: data.info, // Contains metadata like Author, Title, etc.
+        info: data.info,
         fileName,
+        success: true
       }),
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     };
@@ -88,14 +100,14 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     let statusCode = 500;
 
     if (error.message?.includes('timeout')) {
-        errorMessage = 'PDF processing timed out. The document may be too complex or large.';
-        statusCode = 408; // Request Timeout
+      errorMessage = 'PDF processing timed out. The document may be too complex or large.';
+      statusCode = 408;
     } else if (error.message?.includes('Invalid PDF structure') || error.message?.includes('corrupted')) {
-        errorMessage = 'Invalid or corrupted PDF file.';
-        statusCode = 400; // Bad Request
-    } else if (error.message?.includes('image-based')) {
-        errorMessage = 'Could not extract text. The PDF might be image-based or scanned without OCR.';
-        statusCode = 422; // Unprocessable Entity
+      errorMessage = 'Invalid or corrupted PDF file.';
+      statusCode = 400;
+    } else if (error.message?.includes('image-based') || error.message?.includes('insufficient text')) {
+      errorMessage = 'Could not extract sufficient text. The PDF might be image-based or scanned without OCR.';
+      statusCode = 422;
     }
 
     return {
@@ -103,7 +115,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({
         error: errorMessage,
         details: error.message || 'No further details.',
-        fileName: event.body ? (JSON.parse(event.body).fileName || 'unknown') : 'unknown'
+        fileName: event.body ? (JSON.parse(event.body).fileName || 'unknown') : 'unknown',
+        success: false
       }),
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     };

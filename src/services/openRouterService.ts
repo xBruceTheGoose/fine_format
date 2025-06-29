@@ -9,7 +9,6 @@ class OpenRouterService {
   }
 
   public isReady(): boolean {
-    // Always ready since we're using Netlify functions
     return true;
   }
 
@@ -285,7 +284,6 @@ class OpenRouterService {
     return [];
   }
 
-  // NEW: Generate validation context/basis for synthetic Q&A pairs
   public async generateValidationContext(
     combinedContent: string,
     identifiedThemes: string[],
@@ -378,7 +376,7 @@ Create a structured validation context (1500-2000 words) that will serve as the 
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.3, 3500); // Lower temperature for consistency, adequate tokens for comprehensive context
+      ], 0.3, 3500);
 
       console.log('[OPENROUTER] Validation context generated successfully, length:', response.length);
       return response.trim();
@@ -389,7 +387,6 @@ Create a structured validation context (1500-2000 words) that will serve as the 
     }
   }
 
-  // UPDATED: Validate Q&A pair using the generated validation context
   public async validateQAPair(
     syntheticPair: SyntheticQAPair,
     validationContext: string,
@@ -451,7 +448,7 @@ Respond with ONLY a valid JSON object:
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.2, 1000); // Very low temperature for consistency, focused response
+      ], 0.2, 1000);
 
       console.log(`[OPENROUTER] Received validation response, parsing JSON`);
       
@@ -497,7 +494,6 @@ Respond with ONLY a valid JSON object:
 
     } catch (error: any) {
       console.error('[OPENROUTER] Q&A validation failed:', error);
-      // Return a conservative validation result on error
       return {
         isValid: false,
         confidence: 0.1,
@@ -508,17 +504,15 @@ Respond with ONLY a valid JSON object:
     }
   }
 
-  // UPDATED: Generate synthetic Q&A pairs for a SINGLE knowledge gap with refined prompting
   public async generateSyntheticQAPairsForGap(
     combinedContent: string,
     knowledgeGap: KnowledgeGap,
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    maxPairsToRequestThisCall: number = 15 // Renamed from pairsPerGap, represents max for this specific call
+    maxPairsToRequestThisCall: number = 15
   ): Promise<SyntheticQAPair[]> {
     console.log(`[OPENROUTER] Generating up to ${maxPairsToRequestThisCall} synthetic Q&A pairs for gap: ${knowledgeGap.id}`);
     
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    // Dynamic incorrect count, aiming for a ratio of what might be returned
     const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestThisCall * INCORRECT_ANSWER_RATIO));
     const correctCountTarget = maxPairsToRequestThisCall - incorrectCountTarget;
 
@@ -591,15 +585,13 @@ Generate Q&A pairs now:`;
     try {
       console.log(`[OPENROUTER] Sending request for gap ${knowledgeGap.id} using Nvidia Nemotron model`);
       
-      // Increased token limit to 5000 to prevent truncation of larger responses
       const response = await this.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
-      ], 0.6, 5000); // Increased max_tokens
+      ], 0.6, 5000);
 
       console.log(`[OPENROUTER] Received response for gap ${knowledgeGap.id}, parsing JSON`);
       
-      // Wrap JSON parsing in try-catch to handle malformed responses gracefully
       let syntheticPairs: any[];
       try {
         syntheticPairs = this.parseJsonResponse(response);
@@ -653,14 +645,11 @@ Generate Q&A pairs now:`;
     }
   }
 
-  // UPDATED: Generate synthetic Q&A pairs by processing each gap individually
   public async generateSyntheticQAPairs(
     combinedContent: string,
     knowledgeGaps: KnowledgeGap[],
     fineTuningGoal: FineTuningGoal = 'knowledge',
-    // targetCount parameter is no longer used to drive the number of pairs per gap directly.
-    // The calling function in useDatasetGeneration now passes maxPairsToRequestPerGapCall to generateSyntheticQAPairsForGap.
-    // This function (generateSyntheticQAPairs) will iterate through gaps and call the single-gap function.
+    targetCount: number = SYNTHETIC_QA_TARGET,
     onProgress?: (current: number, total: number, gapId: string) => void
   ): Promise<SyntheticQAPair[]> {
     console.log('[OPENROUTER] Starting individual gap-based synthetic Q&A generation');
@@ -668,6 +657,7 @@ Generate Q&A pairs now:`;
       contentLength: combinedContent.length,
       gapCount: knowledgeGaps.length,
       fineTuningGoal,
+      targetCount
     });
     
     if (knowledgeGaps.length === 0) {
@@ -676,7 +666,7 @@ Generate Q&A pairs now:`;
     }
 
     const totalGaps = knowledgeGaps.length;
-    const maxPairsToRequestPerGapCall = 15; // Consistent with the single gap function's default/expectation
+    const maxPairsToRequestPerGapCall = Math.min(15, Math.ceil(targetCount / totalGaps));
     let allSyntheticPairs: SyntheticQAPair[] = [];
     const failedGaps: string[] = [];
 
@@ -731,12 +721,6 @@ Generate Q&A pairs now:`;
     if (failedGaps.length > 0) {
       console.warn('[OPENROUTER] Some gaps failed to generate pairs:', failedGaps);
     }
-
-    // Don't throw error if no pairs are generated overall, could be valid if content is sparse or gaps are hard to fill.
-    // The UI/calling function can decide how to handle zero synthetic pairs.
-    // if (allSyntheticPairs.length === 0 && knowledgeGaps.length > 0) {
-    //   console.warn('No synthetic Q&A pairs could be generated for any knowledge gaps');
-    // }
 
     return this.shuffleArray(allSyntheticPairs);
   }

@@ -1,15 +1,14 @@
 import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } from '../types';
 
-export const GEMINI_MODEL = 'gemini-2.0-flash-exp'; // This IS Flash Lite - confirmed migration
+export const GEMINI_MODEL = 'gemini-2.0-flash-exp';
 
-// export const QA_PAIR_COUNT_TARGET = 100; // No longer a strict target for initial generation
-// export const SYNTHETIC_QA_TARGET_MIN = 50; // No longer a strict target
-// export const SYNTHETIC_QA_TARGET = 75; // No longer a strict target
-export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range) - still used as a guideline for prompts
-
+// Target counts for Q&A generation - restored for proper flow control
+export const QA_PAIR_COUNT_TARGET = 100; // Target number of Q&A pairs for initial generation
+export const SYNTHETIC_QA_TARGET = 75; // Target for synthetic Q&A pairs
+export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
 
 // Batch processing settings
-export const QA_GENERATION_BATCH_SIZE = 25; // Max Q&A pairs to request from LLM in a single batch call for initial generation.
+export const QA_GENERATION_BATCH_SIZE = 25; // Max Q&A pairs to request from LLM in a single batch call
 export const MAX_CONTENT_LENGTH_PER_BATCH = 8000; // Max content length per batch
 export const MAX_OUTPUT_TOKENS_PER_BATCH = 8000; // Max output tokens per batch
 
@@ -28,9 +27,8 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
-// CRITICAL: Aligned with server-side processing limits to prevent 502 errors
-// Base64 encoding increases size by ~33%, so 4MB base64 limit = ~3MB original file limit
-export const BINARY_FILE_SIZE_LIMIT = 3 * 1024 * 1024; // 3MB for binary files (aligned with 4MB base64 server limit)
+// Aligned with server-side processing limits - 4MB base64 server limit = ~3MB original file
+export const BINARY_FILE_SIZE_LIMIT = 3 * 1024 * 1024; // 3MB for binary files
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

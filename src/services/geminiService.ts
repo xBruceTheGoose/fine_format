@@ -9,7 +9,6 @@ class GeminiService {
   }
 
   public isReady(): boolean {
-    // Always ready since we're using Netlify functions
     return true;
   }
 
@@ -149,8 +148,9 @@ class GeminiService {
     console.error('[GEMINI] Response length:', originalResponse.length);
     console.error('[GEMINI] First 500 chars of failed response:', originalResponse.substring(0, 500));
     console.error('[GEMINI] Last 500 chars of failed response:', originalResponse.substring(Math.max(0, originalResponse.length - 500)));
+    
     if (originalResponse.trim().startsWith('<')) {
-        console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This might indicate a server-side error page or misconfiguration.');
+      console.error('[GEMINI] Critical: Response appears to be HTML/XML, not JSON. This might indicate a server-side error page or misconfiguration.');
     }
     
     throw new Error(`Failed to parse JSON response. Response may be truncated or malformed. Length: ${originalResponse.length}`);
@@ -490,120 +490,6 @@ Generate the theme array now:`;
     }
   }
 
-  public async cleanTextContent(
-    textContent: string,
-    fileName: string
-  ): Promise<string> {
-    const systemPrompt = `You are an expert content processor specializing in text cleaning and optimization for fine-tuning dataset preparation.
-
-EXPERTISE:
-- Content extraction and cleaning
-- Text normalization and standardization
-- Information preservation and quality enhancement
-- Format optimization for AI training
-
-OBJECTIVE: Clean and optimize text content while preserving all valuable information for fine-tuning dataset generation.`;
-
-    const userPrompt = `Clean and optimize the following text content from "${fileName}":
-
-CLEANING REQUIREMENTS:
-1. Remove advertisements, navigation elements, headers, footers, and boilerplate content
-2. Eliminate non-essential formatting, markup, and syntax artifacts
-3. Preserve all core textual information and meaningful content
-4. Maintain logical structure and paragraph organization
-5. Standardize spacing and line breaks for consistency
-6. Remove redundant or duplicate content sections
-7. Preserve technical terms, proper nouns, and domain-specific language
-8. Ensure the output is clean, readable plain text optimized for Q&A generation
-
-CONTENT PRESERVATION PRIORITIES:
-- Factual information and data points
-- Procedural knowledge and instructions
-- Conceptual explanations and definitions
-- Examples and case studies
-- Technical specifications and requirements
-- Relationships and dependencies between concepts
-
-Return only the cleaned, optimized text content without commentary or explanations.
-
-CONTENT TO CLEAN:
----
-${textContent}
----`;
-
-    try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: 'I understand. I will clean and optimize the text content while preserving all valuable information.' },
-        { role: 'user', content: userPrompt }
-      ], 0.1, 10000);
-
-      return response.content?.trim() || '';
-    } catch (error: any) {
-      throw new Error(`Text cleaning failed: ${error.message || 'Unknown error'}`);
-    }
-  }
-
-  public async cleanBinaryContent(
-    base64Data: string,
-    mimeType: string,
-    fileName: string
-  ): Promise<string> {
-    const systemPrompt = `You are an expert document processor specializing in extracting and optimizing text content from binary files for fine-tuning dataset preparation.
-
-EXPERTISE:
-- Document content extraction and analysis
-- Text optimization and cleaning
-- Information structure preservation
-- Quality enhancement for AI training
-
-OBJECTIVE: Extract all valuable textual content from the binary file and optimize it for fine-tuning dataset generation.`;
-
-    const userPrompt = `Extract and optimize all textual content from this file: "${fileName}" (${mimeType})
-
-EXTRACTION REQUIREMENTS:
-1. Extract all relevant textual content comprehensively
-2. Preserve document structure and logical organization
-3. Maintain headings, sections, and hierarchical relationships
-4. Include all factual information, procedures, and explanations
-5. Preserve technical terms, proper nouns, and domain-specific language
-6. Ignore images, complex layouts, and purely visual elements
-7. Remove headers, footers, page numbers, and document metadata
-8. Standardize formatting for optimal Q&A generation
-
-CONTENT PRIORITIES:
-- Main body text and content sections
-- Headings and subheadings for structure
-- Lists, tables, and structured information
-- Captions and explanatory text
-- Technical specifications and data
-- Procedural instructions and guidelines
-
-Return only the extracted, optimized text content without commentary. If no meaningful text is found, return an empty response.`;
-
-    try {
-      const response = await this.makeRequest([
-        { 
-          role: 'user', 
-          parts: [
-            { text: systemPrompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-            { text: userPrompt }
-          ]
-        }
-      ], 0.1, 10000);
-
-      return response.content?.trim() || '';
-    } catch (error: any) {
-      throw new Error(`Binary content cleaning failed: ${error.message || 'Unknown error'}`);
-    }
-  }
-
   public async augmentWithWebSearch(
     originalContent: string,
     identifiedThemes: string[] = [],
@@ -739,33 +625,31 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
 
-    const batchSize = 25; // Standard batch size for Q&A generation. Max pairs per LLM call.
+    const batchSize = 25; // Standard batch size for Q&A generation
     const allPairs: QAPair[] = [];
     let currentBatchNumber = 0;
     const MAX_CONSECUTIVE_EMPTY_BATCHES = 2;
-    const OVERALL_MAX_BATCHES_ATTEMPT = 15; // Safety net to prevent runaway loops, e.g. 15*25 = 375 pairs max from one doc.
+    const OVERALL_MAX_BATCHES_ATTEMPT = 15; // Safety net
     let consecutiveEmptyBatches = 0;
 
     console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}. Batch size: ${batchSize}`);
 
-
     while (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
       currentBatchNumber++;
       console.log(`[GEMINI] Generating batch ${currentBatchNumber}/${OVERALL_MAX_BATCHES_ATTEMPT}. Current total pairs: ${allPairs.length}`);
-
 
       try {
         const batchPairs = await this.generateQAPairsBatch(
           content,
           themes,
           fineTuningGoal,
-          batchSize, // Max pairs to request in this batch
+          batchSize,
           currentBatchNumber
         );
         
         if (batchPairs.length > 0) {
           allPairs.push(...batchPairs);
-          consecutiveEmptyBatches = 0; // Reset counter if pairs are found
+          consecutiveEmptyBatches = 0;
           console.log(`[GEMINI] Batch ${currentBatchNumber} completed: ${batchPairs.length} pairs generated. Total pairs so far: ${allPairs.length}`);
         } else {
           consecutiveEmptyBatches++;
@@ -776,18 +660,16 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
           }
         }
 
-        // Small delay between batches to avoid rate limiting, only if not the last attempt
+        // Small delay between batches to avoid rate limiting
         if (currentBatchNumber < OVERALL_MAX_BATCHES_ATTEMPT) {
-
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
       } catch (error: any) {
         console.error(`[GEMINI] Batch ${currentBatchNumber} failed:`, error.message);
-        // Decide if we should break or continue after a batch error. For now, let's continue for a few attempts.
-        consecutiveEmptyBatches++; // Count error as an empty batch for termination purposes
-        if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES + 1) { // Allow one more attempt after error
-            console.error(`[GEMINI] Stopping Q&A generation due to multiple consecutive failed/empty batches.`);
-            break;
+        consecutiveEmptyBatches++;
+        if (consecutiveEmptyBatches >= MAX_CONSECUTIVE_EMPTY_BATCHES + 1) {
+          console.error(`[GEMINI] Stopping Q&A generation due to multiple consecutive failed/empty batches.`);
+          break;
         }
       }
     }
@@ -797,9 +679,7 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     }
 
     if (allPairs.length === 0) {
-        console.warn('[GEMINI] Failed to generate any Q&A pairs for this content.');
-        // Not throwing an error here, as some files might genuinely not yield Q&A.
-        // The calling function in useDatasetGeneration should handle cases with no Q&A pairs.
+      console.warn('[GEMINI] Failed to generate any Q&A pairs for this content.');
     }
 
     const shuffledPairs = this.shuffleArray(allPairs);
@@ -818,9 +698,8 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
     content: string,
     themes: string[],
     fineTuningGoal: FineTuningGoal,
-    maxPairsToRequestInBatch: number, // Renamed from batchSize
+    maxPairsToRequestInBatch: number,
     batchNumber: number
-    // totalBatches parameter removed as it's no longer fixed
   ): Promise<QAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = themes.length > 0
@@ -828,7 +707,6 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
       : '';
 
     const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
-    // Dynamic incorrect count based on how many we ask for, but still a ratio
     const incorrectCountTarget = Math.max(1, Math.ceil(maxPairsToRequestInBatch * INCORRECT_ANSWER_RATIO));
     const correctCountTarget = maxPairsToRequestInBatch - incorrectCountTarget;
 
@@ -1020,104 +898,6 @@ Return a JSON array of knowledge gap objects:
     } catch (error: any) {
       console.error('[GEMINI] Knowledge gap identification failed:', error);
       throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
-    }
-  }
-
-  public async validateQAPair(
-    syntheticPair: SyntheticQAPair,
-    referenceContent: string,
-    fineTuningGoal: FineTuningGoal = 'knowledge'
-  ): Promise<ValidationResult> {
-    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-
-    const systemPrompt = `You are an expert fact-checker and Q&A validator specializing in fine-tuning dataset quality assurance.
-
-EXPERTISE:
-- Factual accuracy verification and assessment
-- Content relevance and quality evaluation
-- Fine-tuning dataset optimization
-- Knowledge gap coverage validation
-- Quality standard enforcement
-
-OBJECTIVE: Validate the accuracy, relevance, and quality of a synthetic Q&A pair against the reference content for ${goalConfig?.name} fine-tuning optimization.`;
-
-    const userPrompt = `Validate this synthetic Q&A pair against the reference content for ${goalConfig?.name} fine-tuning.
-
-FINE-TUNING GOAL: ${goalConfig?.name}
-FOCUS: ${goalConfig?.promptFocus}
-
-SYNTHETIC Q&A PAIR:
-Question: "${syntheticPair.user}"
-Answer: "${syntheticPair.model}"
-Claimed Correctness: ${syntheticPair.isCorrect ? 'CORRECT' : 'INCORRECT'}
-Target Gap: ${syntheticPair.targetGap}
-Generation Reasoning: ${syntheticPair.generationReasoning || 'Not provided'}
-
-VALIDATION CRITERIA:
-1. **Factual Accuracy**: Is the answer factually correct based on the reference content?
-2. **Content Alignment**: Does the Q&A pair align with the reference material?
-3. **Relevance**: Does the pair support the ${goalConfig?.name} objective effectively?
-4. **Quality**: Is the answer comprehensive, clear, and well-structured?
-5. **Consistency**: Does the claimed correctness match the actual accuracy?
-6. **Gap Coverage**: Does this pair effectively address the target knowledge gap?
-7. **Fine-tuning Value**: Will this improve model performance for ${goalConfig?.promptFocus}?
-
-VALIDATION STANDARDS:
-- Answers must be grounded in the reference content
-- Quality should match or exceed the standards of the original dataset
-- Incorrect answers should be clearly wrong but plausible
-- All pairs should contribute meaningfully to fine-tuning effectiveness
-
-REFERENCE CONTENT:
----
-${referenceContent.substring(0, 12000)}${referenceContent.length > 12000 ? '\n[Content truncated for validation focus]' : ''}
----
-
-Provide validation assessment as JSON:
-{
-  "isValid": boolean,
-  "confidence": number,
-  "reasoning": "Detailed explanation of validation decision",
-  "suggestedCorrection": "If invalid, suggest correction",
-  "factualAccuracy": number,
-  "relevanceScore": number
-}`;
-
-    try {
-      const response = await this.makeRequest([
-        { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: 'I understand. I will validate the synthetic Q&A pair comprehensively against the reference content and quality standards.' },
-        { role: 'user', content: userPrompt }
-      ], 0.2, 2000, undefined, { responseMimeType: 'application/json' });
-
-      const validation = this.parseJsonResponse(response.content);
-
-      if (typeof validation.isValid !== 'boolean' ||
-          typeof validation.confidence !== 'number' ||
-          typeof validation.reasoning !== 'string' ||
-          typeof validation.factualAccuracy !== 'number' ||
-          typeof validation.relevanceScore !== 'number') {
-        throw new Error('Invalid validation response structure');
-      }
-
-      return {
-        isValid: validation.isValid,
-        confidence: Math.max(0, Math.min(1, validation.confidence)),
-        reasoning: validation.reasoning,
-        suggestedCorrection: validation.suggestedCorrection || undefined,
-        factualAccuracy: Math.max(0, Math.min(1, validation.factualAccuracy)),
-        relevanceScore: Math.max(0, Math.min(1, validation.relevanceScore))
-      };
-
-    } catch (error: any) {
-      console.error('[GEMINI] Q&A validation failed:', error);
-      return {
-        isValid: false,
-        confidence: 0.1,
-        reasoning: `Validation failed due to error: ${error.message || 'Unknown error'}`,
-        factualAccuracy: 0.1,
-        relevanceScore: 0.1
-      };
     }
   }
 
