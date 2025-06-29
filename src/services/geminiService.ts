@@ -76,6 +76,8 @@ class GeminiService {
           throw new Error('Content too large for processing. Please use smaller files.');
         } else if (errorData.type === 'SERVICE_UNAVAILABLE') {
           throw new Error('Gemini API service is temporarily unavailable. Please try again.');
+        } else if (errorData.type === 'AUTH_ERROR') {
+          throw new Error('API authentication failed. Please check your API key configuration.');
         }
         
         throw new Error(`Netlify function error: ${response.status} - ${errorData.error || 'Unknown error'}`);
@@ -365,7 +367,7 @@ Generate the theme array now:`;
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' },
         { role: 'user', content: userPrompt }
-      ], 0.3, 1200, undefined, { responseMimeType: 'application/json' });
+      ], 0.3, 1200);
 
       const themes = this.parseJsonResponse(response.content);
 
@@ -453,7 +455,7 @@ ${originalContent}
 
     const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
 
-OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content. Focus on creating diverse, relevant questions with accurate answers that will optimize ${goalConfig?.name} fine-tuning.
+OBJECTIVE: Generate comprehensive Q&A pairs from the provided content. Focus on creating diverse, relevant questions with accurate answers that will optimize ${goalConfig?.name} fine-tuning.
 
 CRITICAL SUCCESS FACTORS:
 - Extract maximum value from every piece of content
@@ -501,7 +503,7 @@ Generate Q&A pairs now:`;
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: `I understand. I will generate comprehensive Q&A pairs from the content, focusing on quality and relevance for ${goalConfig?.name} fine-tuning.` },
         { role: 'user', content: userPrompt }
-      ], 0.6, 10000, undefined, { responseMimeType: 'application/json' });
+      ], 0.6, 10000);
 
       const qaData = this.parseJsonResponse(response.content);
 
@@ -588,7 +590,7 @@ ${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '\n[Conte
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` },
         { role: 'user', content: userPrompt }
-      ], 0.3, 5000, undefined, { responseMimeType: 'application/json' });
+      ], 0.3, 5000);
 
       const gaps = this.parseJsonResponse(response.content);
 

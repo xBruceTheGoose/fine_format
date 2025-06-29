@@ -29,7 +29,7 @@ export class FileService {
     
     // Use appropriate size limit based on file type
     const maxSize = isBinaryFile 
-      ? BINARY_FILE_SIZE_LIMIT // 10MB for binary files (PDF/DOCX)
+      ? BINARY_FILE_SIZE_LIMIT // 1MB for binary files (PDF/DOCX)
       : FILE_SIZE_LIMIT; // 5MB for text files
 
     if (file.size > maxSize) {
@@ -38,7 +38,7 @@ export class FileService {
       return {
         ...baseFileData,
         status: 'failed',
-        error: `File too large (${fileSizeMB}MB). Maximum size is ${maxSizeMB}MB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files.`,
+        error: `File too large (${fileSizeMB}MB). Maximum size is ${maxSizeMB}MB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files. Large files cause processing timeouts.`,
       };
     }
 

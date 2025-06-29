@@ -73,7 +73,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       };
     }
 
-    // Check for API keys
+    // Check for API key
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
     
     if (!GEMINI_API_KEY || !GEMINI_API_KEY.trim()) {
@@ -114,8 +114,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       console.log(`[NETLIFY-GEMINI] Total binary content size: ${Math.round(totalBinarySize / 1024)} KB`);
 
-      // Very conservative limit to prevent timeouts
-      const MAX_BINARY_SIZE = 1 * 1024 * 1024; // 1MB to prevent timeouts
+      // Conservative limit to prevent timeouts
+      const MAX_BINARY_SIZE = 500 * 1024; // 500KB to prevent timeouts
       if (totalBinarySize > MAX_BINARY_SIZE) {
         return {
           statusCode: 413,
@@ -170,9 +170,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       // Build request configuration with validation
       const requestConfig: any = {
-        model: 'gemini-2.0-flash-exp',
         contents,
-        config: {
+        generationConfig: {
           maxOutputTokens: Math.min(max_tokens || 4000, 8000),
           temperature: Math.max(0, Math.min(1, temperature || 0.7)),
           topP: 0.95,
@@ -183,20 +182,19 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       // Add tools if provided (for web search)
       if (tools) {
-        requestConfig.config.tools = tools;
+        requestConfig.tools = tools;
       }
 
       console.log('[NETLIFY-GEMINI] Request config prepared:', {
-        model: requestConfig.model,
-        maxOutputTokens: requestConfig.config.maxOutputTokens,
-        temperature: requestConfig.config.temperature,
+        maxOutputTokens: requestConfig.generationConfig.maxOutputTokens,
+        temperature: requestConfig.generationConfig.temperature,
         hasTools: !!tools,
         messageCount: contents.length,
         hasBinaryContent
       });
 
       // Set realistic timeout for Netlify functions
-      const timeoutMs = hasBinaryContent ? 15000 : 20000; // 15s for binary, 20s for text
+      const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => {
@@ -207,8 +205,15 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       try {
         console.log('[NETLIFY-GEMINI] Making request to Gemini API...');
         
+        // Use the correct model and method
+        const model = ai.getGenerativeModel({ 
+          model: 'gemini-2.0-flash-exp',
+          generationConfig: requestConfig.generationConfig,
+          tools: requestConfig.tools
+        });
+        
         // Make the API request with timeout
-        const requestPromise = ai.models.generateContent(requestConfig);
+        const requestPromise = model.generateContent(requestConfig.contents);
         const response = await Promise.race([
           requestPromise,
           new Promise((_, reject) => {
@@ -221,12 +226,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         clearTimeout(timeoutId);
         console.log('[NETLIFY-GEMINI] Received response from Gemini API');
         
-        if (!response || typeof response.text !== 'function') {
+        if (!response || !response.response) {
           console.error('[NETLIFY-GEMINI] Invalid response structure:', response);
           throw new Error('Invalid response from Gemini API');
         }
 
-        const responseText = response.text();
+        const responseText = response.response.text();
         
         if (!responseText || responseText.trim().length === 0) {
           console.error('[NETLIFY-GEMINI] Empty response from Gemini API');
@@ -236,7 +241,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         console.log('[NETLIFY-GEMINI] Success! Response length:', responseText.length);
 
         // Check if response was truncated
-        const finishReason = response.candidates?.[0]?.finishReason;
+        const finishReason = response.response.candidates?.[0]?.finishReason;
         const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
         
         if (wasTruncated) {
@@ -251,8 +256,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           },
           body: JSON.stringify({
             content: responseText,
-            candidates: response.candidates,
-            usage: response.usageMetadata,
+            candidates: response.response.candidates,
+            usage: response.response.usageMetadata,
             finishReason: finishReason,
             truncated: wasTruncated
           }),
@@ -296,6 +301,10 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         errorMessage = 'Service initialization failed - dependency issue';
         statusCode = 503;
         errorType = 'SERVICE_UNAVAILABLE';
+      } else if (error.message?.includes('API key')) {
+        errorMessage = 'API authentication failed';
+        statusCode = 401;
+        errorType = 'AUTH_ERROR';
       }
       
       return {
