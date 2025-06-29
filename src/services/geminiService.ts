@@ -21,7 +21,7 @@ class GeminiService {
   ): Promise<{ content: string; groundingMetadata?: GroundingMetadata; truncated?: boolean }> {
     console.log('[GEMINI] Making request to Netlify function');
 
-    // Validate messages before sending
+    // Comprehensive input validation
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new Error('Messages array is required and cannot be empty');
     }
@@ -29,12 +29,23 @@ class GeminiService {
     // Validate each message
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
+      if (!msg || typeof msg !== 'object') {
+        throw new Error(`Message ${i} is not a valid object`);
+      }
       if (!msg.role) {
         throw new Error(`Message ${i} missing role`);
       }
       if (!msg.content && !msg.parts) {
         throw new Error(`Message ${i} missing content or parts`);
       }
+    }
+
+    // Validate parameters
+    if (typeof temperature !== 'number' || temperature < 0 || temperature > 1) {
+      throw new Error('Temperature must be a number between 0 and 1');
+    }
+    if (typeof maxTokens !== 'number' || maxTokens < 1 || maxTokens > 8000) {
+      throw new Error('Max tokens must be a number between 1 and 8000');
     }
 
     try {
@@ -62,12 +73,12 @@ class GeminiService {
           errorData = await response.json();
         } catch (parseError) {
           console.error('[GEMINI] Failed to parse error response:', parseError);
-          errorData = { error: 'Failed to parse error response' };
+          errorData = { error: 'Failed to parse error response', type: 'PARSE_ERROR' };
         }
         
         console.error('[GEMINI] Netlify function error:', response.status, errorData);
         
-        // Handle specific error types
+        // Handle specific error types with user-friendly messages
         if (errorData.type === 'TIMEOUT_ERROR') {
           throw new Error('Request timed out - content may be too large. Try using smaller content or files.');
         } else if (errorData.type === 'QUOTA_EXCEEDED') {
@@ -78,6 +89,10 @@ class GeminiService {
           throw new Error('Gemini API service is temporarily unavailable. Please try again.');
         } else if (errorData.type === 'AUTH_ERROR') {
           throw new Error('API authentication failed. Please check your API key configuration.');
+        } else if (errorData.type === 'INVALID_REQUEST') {
+          throw new Error('Invalid request format. Please check your input.');
+        } else if (errorData.type === 'SAFETY_FILTER') {
+          throw new Error('Content was blocked by safety filters. Please modify your content.');
         }
         
         throw new Error(`Netlify function error: ${response.status} - ${errorData.error || 'Unknown error'}`);
@@ -114,6 +129,16 @@ class GeminiService {
       // Re-throw with more context if it's a network error
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         throw new Error('Network error - unable to connect to Gemini service. Please check your connection.');
+      }
+      
+      // Re-throw with original message if it's already a user-friendly error
+      if (error.message.includes('timed out') || 
+          error.message.includes('quota') || 
+          error.message.includes('too large') ||
+          error.message.includes('unavailable') ||
+          error.message.includes('authentication') ||
+          error.message.includes('safety filters')) {
+        throw error;
       }
       
       throw new Error(`Gemini service request failed: ${error.message || 'Unknown error'}`);
@@ -220,7 +245,7 @@ class GeminiService {
     return jsonStr
       // Remove trailing commas
       .replace(/,(\s*[}\]])/g, '$1')
-      // Fix unescaped quotes in strings
+      // Fix unescaped quotes in strings (basic fix)
       .replace(/(?<!\\)"/g, '\\"')
       .replace(/\\\\"/g, '\\"')
       // Fix incomplete objects at the end

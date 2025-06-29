@@ -2,7 +2,7 @@ import { TextMimeType, BinaryMimeType, FineTuningConfig, FineTuningGoalConfig } 
 
 export const GEMINI_MODEL = 'gemini-2.0-flash-exp';
 
-// Target counts for Q&A generation - restored for proper flow control
+// Target counts for Q&A generation
 export const QA_PAIR_COUNT_TARGET = 100; // Target number of Q&A pairs for initial generation
 export const SYNTHETIC_QA_TARGET = 75; // Target for synthetic Q&A pairs
 export const INCORRECT_ANSWER_RATIO = 0.08; // 8% incorrect answers (within 5-10% range)
@@ -28,7 +28,7 @@ export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
 // Very conservative limit for binary files to prevent function timeouts
-export const BINARY_FILE_SIZE_LIMIT = 1 * 1024 * 1024; // 1MB for binary files
+export const BINARY_FILE_SIZE_LIMIT = 800 * 1024; // 800KB for binary files (reduced from 1MB)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

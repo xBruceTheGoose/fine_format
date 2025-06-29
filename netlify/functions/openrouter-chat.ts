@@ -31,18 +31,79 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     };
   }
 
-  try {
-    const { messages, temperature = 0.7, max_tokens = 4000 }: RequestBody = JSON.parse(event.body || '{}');
+  console.log('[NETLIFY-OPENROUTER] Function invoked');
 
-    if (!messages || !Array.isArray(messages)) {
+  try {
+    // Parse request body with comprehensive error handling
+    let requestBody: RequestBody;
+    try {
+      if (!event.body) {
+        throw new Error('Request body is empty');
+      }
+      requestBody = JSON.parse(event.body);
+    } catch (parseError) {
+      console.error('[NETLIFY-OPENROUTER] Failed to parse request body:', parseError);
       return {
         statusCode: 400,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'Messages array is required' }),
+        body: JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          type: 'INVALID_REQUEST'
+        }),
       };
+    }
+
+    const { messages, temperature = 0.7, max_tokens = 4000 } = requestBody;
+
+    // Comprehensive message validation
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.error('[NETLIFY-OPENROUTER] Invalid messages array:', messages);
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          error: 'Messages array is required and must be a non-empty array',
+          type: 'INVALID_REQUEST'
+        }),
+      };
+    }
+
+    // Validate each message structure
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (!msg || typeof msg !== 'object') {
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            error: `Message ${i} is not a valid object`,
+            type: 'INVALID_REQUEST'
+          }),
+        };
+      }
+      
+      if (!msg.role || !msg.content) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ 
+            error: `Message ${i} missing required 'role' or 'content' field`,
+            type: 'INVALID_REQUEST'
+          }),
+        };
+      }
     }
 
     // Try multiple API keys with fallback
@@ -53,13 +114,17 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     const apiKeys = [OPENROUTER_API_KEY, OPENROUTER_API_KEY_2, OPENROUTER_API_KEY_3].filter(key => key?.trim());
     
     if (apiKeys.length === 0) {
+      console.error('[NETLIFY-OPENROUTER] No API keys configured');
       return {
         statusCode: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'No OpenRouter API keys configured' }),
+        body: JSON.stringify({ 
+          error: 'OpenRouter API service is not configured. Please contact support.',
+          type: 'SERVICE_UNAVAILABLE'
+        }),
       };
     }
 
@@ -67,22 +132,24 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     let lastError: any = null;
     
-    // Try each API key in sequence
+    // Try each API key in sequence with comprehensive error handling
     for (let i = 0; i < apiKeys.length; i++) {
       const apiKey = apiKeys[i];
       const keyNumber = i + 1;
       
       try {
+        console.log(`[NETLIFY-OPENROUTER] Trying API key ${keyNumber}/${apiKeys.length}`);
+        
+        // Set up abort controller for timeout handling
         const controller = new AbortController();
         const signal = controller.signal;
 
-        // Set timeout slightly less than typical Netlify function limits (e.g., 25s if limit is 26s)
+        // Set timeout slightly less than Netlify function limits
         const timeoutId = setTimeout(() => {
+          console.log(`[NETLIFY-OPENROUTER] Request timeout after 25 seconds`);
           controller.abort();
         }, 25000); // 25 seconds
 
-        console.log(`[NETLIFY-OPENROUTER] Trying API key ${keyNumber}/${apiKeys.length}`);
-        
         const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
           headers: {
@@ -94,8 +161,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           body: JSON.stringify({
             model: 'nvidia/llama-3.1-nemotron-ultra-253b-v1:free',
             messages,
-            temperature,
-            max_tokens,
+            temperature: Math.max(0, Math.min(1, temperature)),
+            max_tokens: Math.min(Math.max(1, max_tokens), 8000),
             stream: false,
             top_p: 0.95,
             frequency_penalty: 0.1,
@@ -125,11 +192,17 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errorText}`);
         }
 
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (parseError) {
+          console.error(`[NETLIFY-OPENROUTER] Failed to parse response JSON with key ${keyNumber}:`, parseError);
+          throw new Error('Failed to parse response from OpenRouter API');
+        }
         
         if (!data.choices?.[0]?.message?.content) {
           console.error(`[NETLIFY-OPENROUTER] Invalid response structure with key ${keyNumber}:`, data);
-          throw new Error('Invalid response from OpenRouter API');
+          throw new Error('Invalid response from OpenRouter API - missing content');
         }
 
         console.log(`[NETLIFY-OPENROUTER] Success with key ${keyNumber}, response length:`, data.choices[0].message.content.length);
@@ -150,10 +223,13 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       } catch (error: any) {
         lastError = error;
+        
+        // Handle timeout errors specifically
         if (error.name === 'AbortError') {
           console.error(`[NETLIFY-OPENROUTER] Key ${keyNumber} fetch aborted due to timeout (25s)`);
-          lastError = new Error(`Request to OpenRouter timed out after 25 seconds with key ${keyNumber}`); // Ensure lastError reflects timeout
+          lastError = new Error(`Request to OpenRouter timed out after 25 seconds with key ${keyNumber}`);
         }
+        
         console.error(`[NETLIFY-OPENROUTER] Key ${keyNumber} failed:`, error.message);
         
         // Check if this is a quota/rate limit error
@@ -173,22 +249,36 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       }
     }
 
-    // All keys failed
+    // All keys failed - comprehensive error handling
     console.error(`[NETLIFY-OPENROUTER] All ${apiKeys.length} API keys failed`);
+    console.error(`[NETLIFY-OPENROUTER] Final error details:`, {
+      message: lastError?.message,
+      name: lastError?.name,
+      status: lastError?.status,
+      code: lastError?.code
+    });
     
-    // Enhanced error handling
+    // Enhanced error handling with specific error types
     let errorMessage = 'Failed to process request with all available API keys';
     let statusCode = 500;
+    let errorType = 'UNKNOWN_ERROR';
     
-    if (lastError?.message?.includes('timeout')) {
-      errorMessage = 'Request timed out - content may be too large';
+    if (lastError?.message?.includes('timeout') || lastError?.name === 'AbortError') {
+      errorMessage = 'Request timed out - content may be too large or complex';
       statusCode = 408;
-    } else if (lastError?.message?.includes('quota')) {
+      errorType = 'TIMEOUT_ERROR';
+    } else if (lastError?.message?.includes('quota') || lastError?.status === 429) {
       errorMessage = 'All API keys have exceeded quota - please try again later';
       statusCode = 429;
-    } else if (lastError?.message?.includes('invalid')) {
-      errorMessage = 'Invalid request format';
+      errorType = 'QUOTA_EXCEEDED';
+    } else if (lastError?.message?.includes('invalid') || lastError?.status === 400) {
+      errorMessage = 'Invalid request format or content';
       statusCode = 400;
+      errorType = 'INVALID_REQUEST';
+    } else if (lastError?.status === 502 || lastError?.status === 503) {
+      errorMessage = 'OpenRouter API service temporarily unavailable';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
     }
     
     return {
@@ -200,13 +290,14 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       body: JSON.stringify({ 
         error: errorMessage,
         details: lastError?.message,
-        type: lastError?.name || 'UnknownError',
+        type: errorType,
         keysAttempted: apiKeys.length
       }),
     };
 
   } catch (error: any) {
-    console.error('[NETLIFY-OPENROUTER] Request processing failed:', error);
+    console.error('[NETLIFY-OPENROUTER] Function execution failed:', error);
+    
     return {
       statusCode: 500,
       headers: {
@@ -214,8 +305,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ 
-        error: 'Failed to process request',
-        details: error.message 
+        error: 'Internal server error - function execution failed',
+        details: error.message,
+        type: 'FUNCTION_ERROR'
       }),
     };
   }

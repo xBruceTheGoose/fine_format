@@ -87,7 +87,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
     fineTuningGoal: FineTuningGoal,
     enableGapFilling: boolean = false
   ) => {
-    console.log('[DATASET_GENERATION] Starting dataset generation process');
+    console.log('[DATASET_GENERATION] Starting comprehensive dataset generation process');
 
     console.log('[DATASET_GENERATION] Parameters:', {
       fileCount: files.length,
@@ -151,7 +151,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
 
       console.log(`[DATASET_GENERATION] Starting content processing for ${totalSourceCount} sources`);
 
-      // Step 1: Process and combine all content
+      // Step 1: Process and combine all content with comprehensive error handling
       currentOverallProgressStep++;
       updateProgress(
         currentOverallProgressStep,
@@ -174,7 +174,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             const file = sourceItem.data as FileData;
             individualCleanedText = file.rawContent;
 
-            // Handle binary file text extraction
+            // Handle binary file text extraction with comprehensive error handling
             if (file.isBinary) {
               let binaryFunctionName = '';
               if (file.mimeType === 'application/pdf') {
@@ -186,33 +186,43 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
               if (binaryFunctionName) {
                 console.log(`[DATASET_GENERATION] Calling ${binaryFunctionName} for ${file.file.name}`);
                 
-                const response = await fetch(`/.netlify/functions/${binaryFunctionName}`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ base64Data: file.rawContent, fileName: file.file.name }),
-                });
-                
-                console.log(`[DATASET_GENERATION] ${binaryFunctionName} response status:`, response.status);
-                
-                if (!response.ok) {
-                  const errorData = await response.json().catch(() => ({}));
-                  console.error(`[DATASET_GENERATION] ${binaryFunctionName} error:`, errorData);
-                  throw new Error(`Text extraction failed for ${file.file.name}: ${response.status} ${errorData.error || 'Unknown error'}`);
+                try {
+                  const response = await fetch(`/.netlify/functions/${binaryFunctionName}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ base64Data: file.rawContent, fileName: file.file.name }),
+                  });
+                  
+                  console.log(`[DATASET_GENERATION] ${binaryFunctionName} response status:`, response.status);
+                  
+                  if (!response.ok) {
+                    let errorData;
+                    try {
+                      errorData = await response.json();
+                    } catch (parseError) {
+                      errorData = { error: 'Failed to parse error response' };
+                    }
+                    console.error(`[DATASET_GENERATION] ${binaryFunctionName} error:`, errorData);
+                    throw new Error(`Text extraction failed for ${file.file.name}: ${response.status} ${errorData.error || 'Unknown error'}`);
+                  }
+                  
+                  const result = await response.json();
+                  console.log(`[DATASET_GENERATION] ${binaryFunctionName} result:`, {
+                    success: result.success,
+                    hasText: !!result.extractedText,
+                    textLength: result.extractedText?.length || 0
+                  });
+                  
+                  if (!result.success || !result.extractedText) {
+                    throw new Error(`Failed to extract text from ${file.file.name}: ${result.error || 'No text extracted'}`);
+                  }
+                  
+                  individualCleanedText = result.extractedText;
+                  console.log(`[DATASET_GENERATION] Extracted ${individualCleanedText.length} chars from binary file ${file.file.name}`);
+                } catch (extractionError: any) {
+                  console.error(`[DATASET_GENERATION] Text extraction failed for ${file.file.name}:`, extractionError);
+                  throw new Error(`Text extraction failed for ${file.file.name}: ${extractionError.message}`);
                 }
-                
-                const result = await response.json();
-                console.log(`[DATASET_GENERATION] ${binaryFunctionName} result:`, {
-                  success: result.success,
-                  hasText: !!result.extractedText,
-                  textLength: result.extractedText?.length || 0
-                });
-                
-                if (!result.success || !result.extractedText) {
-                  throw new Error(`Failed to extract text from ${file.file.name}: ${result.error || 'No text extracted'}`);
-                }
-                
-                individualCleanedText = result.extractedText;
-                console.log(`[DATASET_GENERATION] Extracted ${individualCleanedText.length} chars from binary file ${file.file.name}`);
               }
             }
           } else {
@@ -261,7 +271,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         throw new Error('Combined content is too short for Q&A generation. Please provide more substantial content or check that your files contain readable text.');
       }
 
-      // Step 2: Global theme identification
+      // Step 2: Global theme identification with error handling
       currentOverallProgressStep++;
       updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Analyzing content for themes...', totalSourceCount, enableWebAugmentation, enableGapFilling);
       
@@ -274,7 +284,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         allIdentifiedThemes = [];
       }
 
-      // Step 3: Generate Q&A pairs from combined content
+      // Step 3: Generate Q&A pairs from combined content with comprehensive error handling
       currentOverallProgressStep++;
       updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Generating Q&A pairs from content...', totalSourceCount, enableWebAugmentation, enableGapFilling);
 
@@ -299,7 +309,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let finalCombinedTextForAugmentation = overallCombinedCleanedText;
       let groundingMetadata;
 
-      // Web augmentation
+      // Web augmentation with comprehensive error handling
       if (enableWebAugmentation && allIdentifiedThemes.length > 0) {
         currentOverallProgressStep++;
         updateProgress(currentOverallProgressStep, estimatedTotalSteps, 'Enhancing content with web research...', totalSourceCount, enableWebAugmentation, enableGapFilling);
@@ -321,7 +331,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       let syntheticPairCount = 0;
       let validatedPairCount = 0;
 
-      // Knowledge gap filling
+      // Knowledge gap filling with comprehensive error handling
       if (enableGapFilling && allInitialQAPairs.length > 0) {
         console.log('[DATASET_GENERATION] Knowledge gap filling enabled');
         
@@ -408,7 +418,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
             syntheticPairCount = allSyntheticPairs.length;
             console.log(`[DATASET_GENERATION] Generated ${syntheticPairCount} total synthetic Q&A pairs`);
 
-            // Validate synthetic pairs
+            // Validate synthetic pairs with comprehensive error handling
             if (allSyntheticPairs.length > 0 && validationContext.trim()) {
               const validatedSyntheticPairs: QAPair[] = [];
               const validationThreshold = 0.6;
