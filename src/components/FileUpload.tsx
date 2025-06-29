@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { UploadCloud, FileText, X } from 'lucide-react';
 import { FileData } from '../types';
 import { FileService } from '../services/fileService';
-import { ACCEPTED_FILE_EXTENSIONS } from '../constants';
+import { ACCEPTED_FILE_EXTENSIONS, BINARY_FILE_SIZE_LIMIT } from '../constants';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
 
@@ -80,6 +80,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
+  const maxFileSizeMB = (BINARY_FILE_SIZE_LIMIT / (1024 * 1024)).toFixed(0);
+
   return (
     <div className="space-y-6">
       <Card>
@@ -125,7 +127,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                   SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>
                 <p className="text-warning text-sm mt-1 font-mono font-bold">
-                  MAXIMUM FILE SIZE: 5MB PER FILE
+                  MAXIMUM FILE SIZE: {maxFileSizeMB}MB FOR PDF/DOCX, 5MB FOR TEXT FILES
                 </p>
               </div>
             </div>
@@ -174,6 +176,10 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                       </p>
                       <div className="flex items-center space-x-3 text-sm mt-1">
                         <span className="text-muted font-mono">{fileData.mimeType}</span>
+                        <span className="text-border">•</span>
+                        <span className="text-muted font-mono">
+                          {(fileData.file.size / (1024 * 1024)).toFixed(1)}MB
+                        </span>
                         <span className="text-border">•</span>
                         <span className={`${getStatusColor(fileData.status)} font-bold font-mono tracking-wide`}>
                           {getStatusText(fileData.status)}

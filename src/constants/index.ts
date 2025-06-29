@@ -23,11 +23,11 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 ];
 
-export const ACCEPTED_FILE_EXTENSIONS = '.txt,.md,.html,.jsonl,.pdf,.docx';
+export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
-// CRITICAL: Much smaller limit for binary files to prevent Netlify function timeouts
-export const BINARY_FILE_SIZE_LIMIT = 200 * 1024; // 200KB for binary files (was 8MB)
+// UPDATED: Significantly increased binary file size limit now that we have proper server-side processing
+export const BINARY_FILE_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB for binary files (was 200KB)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {
