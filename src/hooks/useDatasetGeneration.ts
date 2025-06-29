@@ -550,7 +550,7 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       console.log('[DATASET_GENERATION] Process finished, setting isProcessing to false');
       setIsProcessing(false);
     }
-  }, [updateProgress, calculateTimeEstimates, fineTuningGoal]);
+  }, [updateProgress, calculateTimeEstimates]);
 
   return { // Ensure all returned values are defined
     processedData,
