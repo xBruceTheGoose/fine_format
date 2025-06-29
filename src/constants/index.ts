@@ -26,8 +26,9 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
-// UPDATED: Significantly increased binary file size limit now that we have proper server-side processing
-export const BINARY_FILE_SIZE_LIMIT = 10 * 1024 * 1024; // 10MB for binary files (was 200KB)
+// CRITICAL: Aligned with server-side processing limits to prevent 502 errors
+// Base64 encoding increases size by ~33%, so 4MB base64 limit = ~3MB original file limit
+export const BINARY_FILE_SIZE_LIMIT = 3 * 1024 * 1024; // 3MB for binary files (aligned with 4MB base64 server limit)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

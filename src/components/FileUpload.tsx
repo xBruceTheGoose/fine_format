@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { UploadCloud, FileText, X } from 'lucide-react';
 import { FileData } from '../types';
 import { FileService } from '../services/fileService';
-import { ACCEPTED_FILE_EXTENSIONS, BINARY_FILE_SIZE_LIMIT } from '../constants';
+import { ACCEPTED_FILE_EXTENSIONS, BINARY_FILE_SIZE_LIMIT, FILE_SIZE_LIMIT } from '../constants';
 import { Card, CardContent, CardHeader } from './ui/Card';
 import { Button } from './ui/Button';
 
@@ -80,7 +80,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
   };
 
-  const maxFileSizeMB = (BINARY_FILE_SIZE_LIMIT / (1024 * 1024)).toFixed(0);
+  const maxBinaryFileSizeMB = (BINARY_FILE_SIZE_LIMIT / (1024 * 1024)).toFixed(0);
+  const maxTextFileSizeMB = (FILE_SIZE_LIMIT / (1024 * 1024)).toFixed(0);
 
   return (
     <div className="space-y-6">
@@ -127,7 +128,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                   SUPPORTS: .txt, .md, .html, .jsonl, .pdf, .docx
                 </p>
                 <p className="text-warning text-sm mt-1 font-mono font-bold">
-                  MAXIMUM FILE SIZE: {maxFileSizeMB}MB FOR PDF/DOCX, 5MB FOR TEXT FILES
+                  MAXIMUM FILE SIZE: {maxBinaryFileSizeMB}MB FOR PDF/DOCX, {maxTextFileSizeMB}MB FOR TEXT FILES
                 </p>
               </div>
             </div>
