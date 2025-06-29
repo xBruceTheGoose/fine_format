@@ -525,9 +525,6 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
       setCurrentStep(completionMessage);
       console.log('[DATASET_GENERATION] Process completed successfully:', completionMessage);
 
-      // Play sound notification
-      playCompletionSound();
-
       // Send completion notification
       try {
         console.log('[DATASET_GENERATION] Sending completion notification');
