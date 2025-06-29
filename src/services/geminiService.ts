@@ -331,138 +331,6 @@ class GeminiService {
            obj.model.trim().length > 0;
   }
 
-  private getGoalSpecificPromptGuidance(goal: FineTuningGoal): string {
-    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === goal);
-    
-    switch (goal) {
-      case 'topic':
-        return `
-THEME IDENTIFICATION FOCUS for ${goalConfig?.name}:
-- Identify conceptual frameworks and theoretical foundations
-- Extract main subject areas and their interconnections
-- Recognize thematic patterns and recurring concepts
-- Map knowledge domains and categorical structures
-- Highlight topic hierarchies and relationships
-- Focus on themes that support comprehensive topic understanding
-- Prioritize themes that enable effective topic-based Q&A generation
-- Consider both broad thematic areas and specific topic niches`;
-
-      case 'knowledge':
-        return `
-THEME IDENTIFICATION FOCUS for ${goalConfig?.name}:
-- Extract factual information clusters and data domains
-- Identify procedural knowledge areas and process flows
-- Map business logic and operational knowledge structures
-- Recognize technical specifications and requirement patterns
-- Highlight reference information and knowledge repositories
-- Focus on themes that support comprehensive knowledge retrieval
-- Prioritize themes that enable effective fact-based Q&A generation
-- Consider both foundational knowledge and specialized expertise areas`;
-
-      case 'style':
-        return `
-THEME IDENTIFICATION FOCUS for ${goalConfig?.name}:
-- Identify writing style patterns and linguistic characteristics
-- Extract tone and voice consistency markers
-- Recognize communication approach signatures
-- Map rhetorical techniques and persuasion patterns
-- Highlight audience engagement and interaction styles
-- Focus on themes that support style replication and consistency
-- Prioritize themes that enable effective style-based Q&A generation
-- Consider both surface-level stylistic elements and deeper communication patterns`;
-
-      default:
-        return 'Focus on comprehensive theme identification covering all aspects of the content for optimal Q&A generation.';
-    }
-  }
-
-  private getGoalSpecificQAGuidance(goal: FineTuningGoal): string {
-    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === goal);
-    
-    switch (goal) {
-      case 'topic':
-        return `
-Q&A GENERATION STRATEGY for ${goalConfig?.name}:
-
-QUESTION TYPES TO GENERATE:
-- Conceptual understanding: "What is the main concept behind...?"
-- Thematic relationships: "How do these topics relate to...?"
-- Categorical knowledge: "What category does this belong to?"
-- Topic exploration: "What are the key aspects of...?"
-- Comparative analysis: "How does this topic compare to...?"
-- Hierarchical understanding: "What are the subtopics of...?"
-
-ANSWER CHARACTERISTICS:
-- Focus on conceptual clarity and thematic coherence
-- Emphasize relationships between different topics
-- Provide context for topic placement within broader frameworks
-- Include examples that illustrate thematic patterns
-- Maintain consistency in topic-focused explanations
-- Balance breadth of coverage with thematic depth
-
-QUALITY STANDARDS:
-- Questions should test topic comprehension at multiple levels
-- Answers should demonstrate clear thematic understanding
-- Content should support topic-based model fine-tuning
-- Include both foundational and advanced topic exploration`;
-
-      case 'knowledge':
-        return `
-Q&A GENERATION STRATEGY for ${goalConfig?.name}:
-
-QUESTION TYPES TO GENERATE:
-- Factual retrieval: "What is...?" / "When did...?" / "Where is...?"
-- Procedural knowledge: "How do you...?" / "What are the steps to...?"
-- Conditional logic: "When should...?" / "Under what conditions...?"
-- Technical specifications: "What are the requirements for...?"
-- Data relationships: "How does X affect Y?"
-- Reference queries: "What does this term mean?"
-
-ANSWER CHARACTERISTICS:
-- Provide precise, factual information with supporting details
-- Include step-by-step procedures where applicable
-- Reference specific data points, metrics, and specifications
-- Maintain accuracy and verifiability of all claims
-- Structure answers for easy information retrieval
-- Include relevant context and background information
-
-QUALITY STANDARDS:
-- Questions should test factual accuracy and procedural understanding
-- Answers must be comprehensive yet concise
-- Content should serve as reliable knowledge repository
-- Include both basic facts and complex explanations`;
-
-      case 'style':
-        return `
-Q&A GENERATION STRATEGY for ${goalConfig?.name}:
-
-QUESTION TYPES TO GENERATE:
-- Style demonstration: "How would you explain...?" / "How should this be communicated?"
-- Tone application: "What tone is appropriate for...?"
-- Voice consistency: "How would you address...?"
-- Communication strategy: "What approach would you take to...?"
-- Audience adaptation: "How would you tailor this message for...?"
-- Rhetorical techniques: "What persuasive elements would you use?"
-
-ANSWER CHARACTERISTICS:
-- Demonstrate the specific writing style and voice consistently
-- Show appropriate tone and register for different contexts
-- Include examples of effective communication patterns
-- Maintain stylistic consistency across all responses
-- Reflect the author's unique communication approach
-- Balance style demonstration with content value
-
-QUALITY STANDARDS:
-- Questions should elicit style-appropriate responses
-- Answers must consistently reflect the target communication style
-- Content should enable style replication and consistency
-- Include both explicit style guidance and implicit demonstration`;
-
-      default:
-        return 'Generate comprehensive Q&A pairs covering all aspects of the content with balanced question types and high-quality answers.';
-    }
-  }
-
   public async identifyThemes(
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
@@ -472,44 +340,22 @@ QUALITY STANDARDS:
       return [];
     }
 
-    const goalGuidance = this.getGoalSpecificPromptGuidance(fineTuningGoal);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
 
     const systemPrompt = `You are an expert content analyst specializing in theme identification for fine-tuning dataset optimization.
 
-EXPERTISE AREAS:
-- Content analysis and theme extraction
-- Knowledge domain mapping
-- Fine-tuning dataset design
-- Thematic pattern recognition
-- Content categorization and clustering
-
-OBJECTIVE: Identify 5-8 key themes that will optimize Q&A generation for ${goalConfig?.name} fine-tuning, ensuring comprehensive coverage and high-quality dataset creation.`;
+OBJECTIVE: Identify 5-8 key themes that will optimize Q&A generation for ${goalConfig?.name} fine-tuning.`;
 
     const userPrompt = `Analyze the content and identify 5-8 key themes optimized for ${goalConfig?.name} fine-tuning.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-${goalGuidance}
-
-THEME IDENTIFICATION REQUIREMENTS:
-- Identify themes that support generation of diverse, high-quality Q&A pairs
-- Focus on themes that align with the ${goalConfig?.name} objective
-- Consider both broad thematic areas and specific subtopics
-- Ensure themes are search-friendly for potential web augmentation
-- Balance comprehensive coverage with focused depth
-- Prioritize themes that will enhance fine-tuning effectiveness
-
-OUTPUT FORMAT:
-Return a JSON array of 5-8 theme strings, each representing a specific, actionable theme.
-
-EXAMPLE THEMES for ${goalConfig?.name}:
-${this.getExampleThemes(fineTuningGoal)}
+Return a JSON array of 5-8 theme strings.
 
 CONTENT TO ANALYZE:
 ---
-${combinedContent.substring(0, 18000)}${combinedContent.length > 18000 ? '\n[Content truncated for analysis focus]' : ''}
+${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '\n[Content truncated for analysis focus]' : ''}
 ---
 
 Generate the theme array now:`;
@@ -540,19 +386,6 @@ Generate the theme array now:`;
     }
   }
 
-  private getExampleThemes(goal: FineTuningGoal): string {
-    switch (goal) {
-      case 'topic':
-        return '["artificial intelligence ethics and governance", "machine learning algorithm fundamentals", "neural network architecture patterns", "AI safety and alignment protocols", "deep learning application domains"]';
-      case 'knowledge':
-        return '["API documentation and implementation procedures", "database configuration and optimization techniques", "troubleshooting methodologies and diagnostic processes", "security implementation protocols and best practices", "performance optimization strategies and monitoring"]';
-      case 'style':
-        return '["technical writing clarity and precision standards", "professional communication tone and register", "persuasive argumentation structure and techniques", "audience engagement and interaction strategies", "concise explanation methodologies and frameworks"]';
-      default:
-        return '["main topic themes", "key concepts", "important procedures", "communication patterns", "knowledge areas"]';
-    }
-  }
-
   public async augmentWithWebSearch(
     originalContent: string,
     identifiedThemes: string[] = [],
@@ -568,16 +401,7 @@ Generate the theme array now:`;
       ? `\n\nPRIORITY THEMES FOR WEB SEARCH: ${identifiedThemes.join(', ')}`
       : '';
 
-    const goalSpecificGuidance = this.getGoalSpecificWebSearchGuidance(fineTuningGoal);
-
     const systemPrompt = `You are an expert content augmentation specialist with access to real-time web search capabilities, optimizing content for ${goalConfig?.name} fine-tuning.
-
-EXPERTISE:
-- Content analysis and enhancement
-- Web research and information synthesis
-- Knowledge integration and coherence
-- Fine-tuning dataset optimization
-- Information quality assessment
 
 OBJECTIVE: Enhance the original content with targeted web research to create a comprehensive, coherent resource optimized for generating high-quality Q&A pairs for ${goalConfig?.name} fine-tuning.`;
 
@@ -585,33 +409,6 @@ OBJECTIVE: Enhance the original content with targeted web research to create a c
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
-
-${goalSpecificGuidance}
-
-AUGMENTATION STRATEGY:
-1. Analyze core themes and identify enhancement opportunities.
-2. Use Google Search to find current, authoritative, and recently updated information relevant to these themes.
-3. Prioritize fetching information that is new and not redundant with the original content.
-4. Integrate web-sourced content seamlessly, ensuring it is distinct and complementary.
-5. Maintain coherent narrative flow and logical organization.
-6. Prioritize factual accuracy and source credibility in all augmented content.
-7. Enhance content depth and breadth while preserving original core themes.
-8. Optimize the combined content for comprehensive Q&A generation coverage.
-
-INTEGRATION REQUIREMENTS:
-- Preserve all original content and themes
-- Add complementary information that enhances understanding
-- Include current facts, statistics, and developments
-- Maintain consistent tone and style throughout
-- Ensure seamless integration without redundancy
-- Focus on areas that will improve Q&A generation quality
-
-QUALITY STANDARDS:
-- All added information must be factually accurate and current
-- Sources should be authoritative and credible
-- Content should directly support the ${goalConfig?.name} objective
-- Integration should feel natural and coherent
-- Enhanced content should enable generation of diverse Q&A pairs
 
 Return ONLY the enhanced, integrated content without commentary or source citations.
 
@@ -638,46 +435,6 @@ ${originalContent}
     }
   }
 
-  private getGoalSpecificWebSearchGuidance(goal: FineTuningGoal): string {
-    switch (goal) {
-      case 'topic':
-        return `
-WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
-- Search for related concepts, theoretical frameworks, and academic perspectives
-- Find current developments and emerging trends in the topic areas
-- Look for comparative analyses and topic relationships
-- Include diverse viewpoints and approaches to the themes
-- Search for educational resources and explanatory content
-- Focus on enhancing thematic depth and conceptual understanding
-- Prioritize content that supports topic-based Q&A generation`;
-
-      case 'knowledge':
-        return `
-WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
-- Search for current facts, statistics, and authoritative data
-- Find procedural knowledge, best practices, and implementation guides
-- Look for technical specifications, standards, and requirements
-- Include case studies, examples, and practical applications
-- Search for troubleshooting guides and problem-solving resources
-- Focus on enhancing factual accuracy and procedural completeness
-- Prioritize content that supports knowledge-based Q&A generation`;
-
-      case 'style':
-        return `
-WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
-- Search for style guides, writing standards, and communication best practices
-- Find examples of effective communication in similar contexts
-- Look for rhetorical techniques and persuasion strategies
-- Include audience engagement and interaction methodologies
-- Search for tone and voice consistency guidelines
-- Focus on enhancing stylistic elements and communication patterns
-- Prioritize content that supports style-based Q&A generation`;
-
-      default:
-        return 'Focus on comprehensive content enhancement covering all aspects relevant to the fine-tuning objective.';
-    }
-  }
-
   public async generateQAPairs(
     content: string, 
     themes: string[] = [],
@@ -692,19 +449,9 @@ WEB SEARCH STRATEGY for ${goal.toUpperCase()}:
       ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure comprehensive coverage of these themes across the generated Q&A pairs.`
       : '';
 
-    const goalSpecificGuidance = this.getGoalSpecificQAGuidance(fineTuningGoal);
-
     console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}`);
 
-    // Use a more aggressive approach for Q&A generation
     const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
-
-EXPERTISE:
-- Question generation across multiple difficulty levels and types
-- Answer optimization for fine-tuning effectiveness
-- Content analysis and comprehensive coverage
-- Quality assessment and consistency maintenance
-- Dataset balance and discrimination training
 
 OBJECTIVE: Generate as many high-quality Q&A pairs as possible from the provided content. Focus on creating diverse, relevant questions with accurate answers that will optimize ${goalConfig?.name} fine-tuning.
 
@@ -719,8 +466,6 @@ CRITICAL SUCCESS FACTORS:
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
-
-${goalSpecificGuidance}
 
 GENERATION REQUIREMENTS:
 - Generate as many high-quality Q&A pairs as the content supports
@@ -805,17 +550,8 @@ Generate Q&A pairs now:`;
     }
 
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
-    const existingQuestions = generatedQAPairs.map(pair => pair.user);
-    const existingTopics = generatedQAPairs.map(pair => `Q: ${pair.user.substring(0, 100)}...`);
 
     const systemPrompt = `You are an expert dataset analyst specializing in knowledge gap identification for fine-tuning dataset optimization.
-
-EXPERTISE:
-- Comprehensive content analysis and coverage assessment
-- Knowledge domain mapping and gap identification
-- Fine-tuning dataset quality evaluation
-- Question type diversity analysis
-- Content completeness verification
 
 OBJECTIVE: Identify 5-8 significant knowledge gaps in the generated Q&A dataset that should be addressed with additional synthetic Q&A pairs to optimize ${goalConfig?.name} fine-tuning effectiveness.`;
 
@@ -830,39 +566,6 @@ DATASET ANALYSIS CONTEXT:
 - Correct answers: ${generatedQAPairs.filter(p => p.isCorrect).length}
 - Incorrect answers: ${generatedQAPairs.filter(p => !p.isCorrect).length}
 
-EXISTING QUESTION COVERAGE (sample):
-${existingTopics.slice(0, 20).map((topic, i) => `${i + 1}. ${topic}`).join('\n')}
-${existingTopics.length > 20 ? `... and ${existingTopics.length - 20} more questions` : ''}
-
-GAP IDENTIFICATION CRITERIA:
-1. **Content Coverage Gaps**: Areas of the original content not adequately covered
-2. **Question Type Diversity**: Missing question types that would improve ${goalConfig?.name} training
-3. **Complexity Level Gaps**: Missing difficulty levels or depth variations
-4. **Theme Representation**: Under-represented themes from the identified theme list
-5. **Fine-tuning Alignment**: Areas that would specifically benefit ${goalConfig?.promptFocus}
-6. **Edge Case Coverage**: Important scenarios or conditions not addressed
-
-ANALYSIS REQUIREMENTS:
-- Compare generated Q&A coverage against original content comprehensiveness
-- Identify 5-8 specific, actionable knowledge gaps
-- Prioritize gaps based on impact on ${goalConfig?.name} fine-tuning quality
-- Focus on gaps that would generate 10-15 additional high-quality Q&A pairs each
-- Consider both content gaps and methodological gaps
-- Ensure identified gaps are specific enough for targeted synthetic generation
-
-For each gap, provide:
-- Unique identifier (gap_1, gap_2, etc.)
-- Clear, specific description of the missing knowledge area
-- Related theme from the original content themes
-- Priority level (high/medium/low) based on ${goalConfig?.name} importance
-- Suggested question types that would fill this gap
-- Related concepts that synthetic pairs should cover
-
-ORIGINAL CONTENT FOR REFERENCE:
----
-${originalContent.substring(0, 15000)}${originalContent.length > 15000 ? '\n[Content truncated for analysis focus]' : ''}
----
-
 Return a JSON array of knowledge gap objects:
 [
   {
@@ -873,7 +576,12 @@ Return a JSON array of knowledge gap objects:
     "suggestedQuestionTypes": ["specific_question_type_1", "specific_question_type_2"],
     "relatedConcepts": ["concept1", "concept2", "concept3"]
   }
-]`;
+]
+
+ORIGINAL CONTENT FOR REFERENCE:
+---
+${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '\n[Content truncated for analysis focus]' : ''}
+---`;
 
     try {
       const response = await this.makeRequest([
