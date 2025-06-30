@@ -122,11 +122,15 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       }
     }
 
-    // Check for API key
+    // Check for multiple API keys with fallback
     const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const GEMINI_API_KEY_2 = process.env.GEMINI_API_KEY_2;
+    const GEMINI_API_KEY_3 = process.env.GEMINI_API_KEY_3;
     
-    if (!GEMINI_API_KEY?.trim()) {
-      console.error('[NETLIFY-GEMINI] No API key configured');
+    const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3].filter(key => key?.trim());
+    
+    if (apiKeys.length === 0) {
+      console.error('[NETLIFY-GEMINI] No API keys configured');
       return {
         statusCode: 500,
         headers: {
@@ -140,7 +144,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       };
     }
 
-    console.log(`[NETLIFY-GEMINI] API key found, length: ${GEMINI_API_KEY.length}`);
+    console.log(`[NETLIFY-GEMINI] Available API keys: ${apiKeys.length}`);
 
     // Validate and sanitize parameters with proper defaults and bounds checking
     let validatedMaxTokens = 4000; // Default value
@@ -216,234 +220,271 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       }
     }
 
-    try {
-      console.log(`[NETLIFY-GEMINI] Attempting to import @google/genai`);
+    let lastError: any = null;
+    
+    // Try each API key in sequence with comprehensive error handling
+    for (let i = 0; i < apiKeys.length; i++) {
+      const apiKey = apiKeys[i];
+      const keyNumber = i + 1;
       
-      // Dynamic import with comprehensive error handling
-      let GoogleGenAI;
       try {
-        const genaiModule = await import('@google/genai');
-        GoogleGenAI = genaiModule.GoogleGenAI;
-        console.log('[NETLIFY-GEMINI] Successfully imported @google/genai');
-      } catch (importError) {
-        console.error('[NETLIFY-GEMINI] Failed to import @google/genai:', importError);
+        console.log(`[NETLIFY-GEMINI] Trying API key ${keyNumber}/${apiKeys.length}`);
         
-        // Try alternative import strategies
+        // Dynamic import with better error handling
+        let GoogleGenAI;
         try {
-          console.log('[NETLIFY-GEMINI] Trying alternative import method...');
-          const { GoogleGenAI: AltGoogleGenAI } = await import('@google/genai');
-          GoogleGenAI = AltGoogleGenAI;
-          console.log('[NETLIFY-GEMINI] Alternative import successful');
-        } catch (altImportError) {
-          console.error('[NETLIFY-GEMINI] Alternative import also failed:', altImportError);
+          const genaiModule = await import('@google/genai');
+          GoogleGenAI = genaiModule.GoogleGenAI;
+          console.log('[NETLIFY-GEMINI] Successfully imported @google/genai');
+        } catch (importError) {
+          console.error('[NETLIFY-GEMINI] Failed to import @google/genai:', importError);
           throw new Error('Failed to load Gemini SDK. Service temporarily unavailable.');
         }
-      }
 
-      const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
-      console.log('[NETLIFY-GEMINI] GoogleGenAI client initialized');
-      
-      // Convert messages to Gemini format with comprehensive validation
-      const contents = messages.map((msg: any, index: number) => {
-        try {
-          if (msg.parts) {
-            // Validate parts structure
-            if (!Array.isArray(msg.parts)) {
-              throw new Error(`Message ${index} parts must be an array`);
+        const ai = new GoogleGenAI({ apiKey });
+        console.log('[NETLIFY-GEMINI] GoogleGenAI client initialized');
+        
+        // Convert messages to Gemini format with comprehensive validation
+        const contents = messages.map((msg: any, index: number) => {
+          try {
+            if (msg.parts) {
+              // Validate parts structure
+              if (!Array.isArray(msg.parts)) {
+                throw new Error(`Message ${index} parts must be an array`);
+              }
+              
+              return {
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: msg.parts
+              };
+            } else if (msg.content) {
+              // Validate content
+              if (typeof msg.content !== 'string') {
+                throw new Error(`Message ${index} content must be a string`);
+              }
+              
+              return {
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.content }]
+              };
+            } else {
+              throw new Error(`Message ${index} missing content or parts`);
             }
-            
-            return {
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: msg.parts
-            };
-          } else if (msg.content) {
-            // Validate content
-            if (typeof msg.content !== 'string') {
-              throw new Error(`Message ${index} content must be a string`);
-            }
-            
-            return {
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: msg.content }]
-            };
-          } else {
-            throw new Error(`Message ${index} missing content or parts`);
+          } catch (msgError) {
+            console.error(`[NETLIFY-GEMINI] Error processing message ${index}:`, msgError);
+            throw new Error(`Invalid message format at index ${index}: ${msgError.message}`);
           }
-        } catch (msgError) {
-          console.error(`[NETLIFY-GEMINI] Error processing message ${index}:`, msgError);
-          throw new Error(`Invalid message format at index ${index}: ${msgError.message}`);
-        }
-      });
-
-      console.log(`[NETLIFY-GEMINI] Converted ${contents.length} messages to Gemini format`);
-
-      // Build request configuration with validated parameters
-      const requestConfig: any = {
-        contents,
-        generationConfig: {
-          maxOutputTokens: validatedMaxTokens,
-          temperature: validatedTemperature,
-          topP: 0.95,
-          topK: 40,
-          ...config
-        }
-      };
-
-      // Add tools if provided (for web search)
-      if (tools) {
-        requestConfig.tools = tools;
-      }
-
-      console.log('[NETLIFY-GEMINI] Request config prepared:', {
-        maxOutputTokens: requestConfig.generationConfig.maxOutputTokens,
-        temperature: requestConfig.generationConfig.temperature,
-        hasTools: !!tools,
-        messageCount: contents.length,
-        hasBinaryContent
-      });
-
-      // Set realistic timeout for Netlify functions
-      const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log(`[NETLIFY-GEMINI] Request timeout after ${timeoutMs}ms`);
-        controller.abort();
-      }, timeoutMs);
-
-      try {
-        console.log('[NETLIFY-GEMINI] Making request to Gemini API...');
-        
-        // Use the correct model and method with proper error handling
-        const model = ai.getGenerativeModel({ 
-          model: 'gemini-2.0-flash-exp',
-          generationConfig: requestConfig.generationConfig,
-          tools: requestConfig.tools
         });
-        
-        // Make the API request with timeout and comprehensive error handling
-        const requestPromise = model.generateContent(requestConfig.contents);
-        const timeoutPromise = new Promise((_, reject) => {
-          controller.signal.addEventListener('abort', () => {
-            reject(new Error('Request timeout - Netlify function limit exceeded'));
-          });
-        });
-        
-        const response = await Promise.race([requestPromise, timeoutPromise]);
-        
-        clearTimeout(timeoutId);
-        console.log('[NETLIFY-GEMINI] Received response from Gemini API');
-        
-        // Comprehensive response validation
-        if (!response) {
-          throw new Error('No response received from Gemini API');
-        }
-        
-        if (!response.response) {
-          console.error('[NETLIFY-GEMINI] Invalid response structure:', response);
-          throw new Error('Invalid response structure from Gemini API');
-        }
 
-        let responseText;
-        try {
-          responseText = response.response.text();
-        } catch (textError) {
-          console.error('[NETLIFY-GEMINI] Failed to extract text from response:', textError);
-          throw new Error('Failed to extract text from Gemini API response');
-        }
-        
-        if (!responseText || responseText.trim().length === 0) {
-          console.error('[NETLIFY-GEMINI] Empty response from Gemini API');
-          throw new Error('Empty response from Gemini API');
-        }
+        console.log(`[NETLIFY-GEMINI] Converted ${contents.length} messages to Gemini format`);
 
-        console.log('[NETLIFY-GEMINI] Success! Response length:', responseText.length);
-
-        // Check if response was truncated
-        const finishReason = response.response.candidates?.[0]?.finishReason;
-        const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
-        
-        if (wasTruncated) {
-          console.warn(`[NETLIFY-GEMINI] Response was truncated (${finishReason})`);
-        }
-
-        return {
-          statusCode: 200,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            content: responseText,
-            candidates: response.response.candidates,
-            usage: response.response.usageMetadata,
-            finishReason: finishReason,
-            truncated: wasTruncated
-          }),
+        // Build request configuration with validated parameters
+        const requestConfig: any = {
+          contents,
+          generationConfig: {
+            maxOutputTokens: validatedMaxTokens,
+            temperature: validatedTemperature,
+            topP: 0.95,
+            topK: 40,
+            ...config
+          }
         };
 
-      } catch (requestError: any) {
-        clearTimeout(timeoutId);
-        console.error(`[NETLIFY-GEMINI] Request error:`, requestError);
-        throw requestError;
-      }
+        // Add tools if provided (for web search)
+        if (tools) {
+          requestConfig.tools = tools;
+        }
 
-    } catch (error: any) {
-      console.error(`[NETLIFY-GEMINI] API request failed:`, error);
-      
-      // Enhanced error handling with specific error types
-      let errorMessage = 'Failed to process request with Gemini API';
-      let statusCode = 500;
-      let errorType = 'UNKNOWN_ERROR';
-      
-      if (error.message?.includes('timeout') || error.name === 'AbortError') {
-        errorMessage = 'Request timed out - content may be too large or complex for processing';
-        statusCode = 408;
-        errorType = 'TIMEOUT_ERROR';
-      } else if (error.message?.includes('quota') || error.status === 429) {
-        errorMessage = 'API quota exceeded - please try again later';
-        statusCode = 429;
-        errorType = 'QUOTA_EXCEEDED';
-      } else if (error.message?.includes('invalid') || error.status === 400) {
-        errorMessage = 'Invalid request format or content';
-        statusCode = 400;
-        errorType = 'INVALID_REQUEST';
-      } else if (error.message?.includes('SAFETY')) {
-        errorMessage = 'Content was blocked by safety filters';
-        statusCode = 400;
-        errorType = 'SAFETY_FILTER';
-      } else if (error.status === 502 || error.status === 503) {
-        errorMessage = 'Gemini API service temporarily unavailable';
-        statusCode = 503;
-        errorType = 'SERVICE_UNAVAILABLE';
-      } else if (error.message?.includes('import') || error.message?.includes('module')) {
-        errorMessage = 'Service initialization failed - dependency issue';
-        statusCode = 503;
-        errorType = 'SERVICE_UNAVAILABLE';
-      } else if (error.message?.includes('API key') || error.status === 401) {
-        errorMessage = 'API authentication failed';
-        statusCode = 401;
-        errorType = 'AUTH_ERROR';
-      } else if (error.message?.includes('Failed to load')) {
-        errorMessage = 'Service dependencies failed to load';
-        statusCode = 503;
-        errorType = 'SERVICE_UNAVAILABLE';
+        console.log('[NETLIFY-GEMINI] Request config prepared:', {
+          maxOutputTokens: requestConfig.generationConfig.maxOutputTokens,
+          temperature: requestConfig.generationConfig.temperature,
+          hasTools: !!tools,
+          messageCount: contents.length,
+          hasBinaryContent
+        });
+
+        // Set realistic timeout for Netlify functions
+        const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.log(`[NETLIFY-GEMINI] Request timeout after ${timeoutMs}ms`);
+          controller.abort();
+        }, timeoutMs);
+
+        try {
+          console.log('[NETLIFY-GEMINI] Making request to Gemini API...');
+          
+          // Use the correct model and method with proper error handling
+          const model = ai.getGenerativeModel({ 
+            model: 'gemini-2.0-flash-exp',
+            generationConfig: requestConfig.generationConfig,
+            tools: requestConfig.tools
+          });
+          
+          // Make the API request with timeout and comprehensive error handling
+          const requestPromise = model.generateContent(requestConfig.contents);
+          const timeoutPromise = new Promise((_, reject) => {
+            controller.signal.addEventListener('abort', () => {
+              reject(new Error('Request timeout - Netlify function limit exceeded'));
+            });
+          });
+          
+          const response = await Promise.race([requestPromise, timeoutPromise]);
+          
+          clearTimeout(timeoutId);
+          console.log('[NETLIFY-GEMINI] Received response from Gemini API');
+          
+          // Comprehensive response validation
+          if (!response) {
+            throw new Error('No response received from Gemini API');
+          }
+          
+          if (!response.response) {
+            console.error('[NETLIFY-GEMINI] Invalid response structure:', response);
+            throw new Error('Invalid response structure from Gemini API');
+          }
+
+          let responseText;
+          try {
+            responseText = response.response.text();
+          } catch (textError) {
+            console.error('[NETLIFY-GEMINI] Failed to extract text from response:', textError);
+            throw new Error('Failed to extract text from Gemini API response');
+          }
+          
+          if (!responseText || responseText.trim().length === 0) {
+            console.error('[NETLIFY-GEMINI] Empty response from Gemini API');
+            throw new Error('Empty response from Gemini API');
+          }
+
+          console.log('[NETLIFY-GEMINI] Success! Response length:', responseText.length);
+
+          // Check if response was truncated
+          const finishReason = response.response.candidates?.[0]?.finishReason;
+          const wasTruncated = finishReason === 'MAX_TOKENS' || finishReason === 'LENGTH';
+          
+          if (wasTruncated) {
+            console.warn(`[NETLIFY-GEMINI] Response was truncated (${finishReason})`);
+          }
+
+          return {
+            statusCode: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              content: responseText,
+              candidates: response.response.candidates,
+              usage: response.response.usageMetadata,
+              finishReason: finishReason,
+              truncated: wasTruncated,
+              keyUsed: keyNumber
+            }),
+          };
+
+        } catch (requestError: any) {
+          clearTimeout(timeoutId);
+          console.error(`[NETLIFY-GEMINI] Request error with key ${keyNumber}:`, requestError);
+          throw requestError;
+        }
+
+      } catch (error: any) {
+        lastError = error;
+        console.error(`[NETLIFY-GEMINI] Key ${keyNumber} failed:`, error.message);
+        
+        // Check if this is a quota/rate limit error
+        const isQuotaError = error.message?.includes('quota') || 
+                           error.message?.includes('rate') || 
+                           error.message?.includes('limit') ||
+                           error.message?.includes('429') ||
+                           error.status === 429;
+
+        // Check if this is a timeout error
+        const isTimeoutError = error.message?.includes('timeout') ||
+                              error.message?.includes('TIMEOUT') ||
+                              error.code === 'ETIMEDOUT' ||
+                              error.name === 'AbortError';
+
+        if (isQuotaError) {
+          console.warn(`[NETLIFY-GEMINI] Quota/rate limit detected on key ${keyNumber}, trying next key`);
+          continue; // Try next key immediately for quota errors
+        }
+
+        if (isTimeoutError) {
+          console.warn(`[NETLIFY-GEMINI] Timeout detected on key ${keyNumber}, trying next key`);
+          continue; // Try next key for timeout errors
+        }
+
+        // For other errors, still try the next key but log the error type
+        console.warn(`[NETLIFY-GEMINI] Error with key ${keyNumber}: ${error.message}, trying next key`);
+        continue;
       }
-      
-      return {
-        statusCode,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          error: errorMessage,
-          details: error.message,
-          type: errorType,
-          suggestion: hasBinaryContent ? 'Binary content should have been extracted to text. Please contact support.' : 'Please try again or contact support'
-        }),
-      };
     }
+
+    // All keys failed - comprehensive error handling
+    console.error(`[NETLIFY-GEMINI] All ${apiKeys.length} API keys failed`);
+    console.error(`[NETLIFY-GEMINI] Final error details:`, {
+      message: lastError?.message,
+      name: lastError?.name,
+      status: lastError?.status,
+      code: lastError?.code
+    });
+    
+    // Enhanced error handling with specific error types
+    let errorMessage = 'Failed to process request with all available API keys';
+    let statusCode = 500;
+    let errorType = 'UNKNOWN_ERROR';
+    
+    if (lastError?.message?.includes('timeout') || lastError?.name === 'AbortError') {
+      errorMessage = 'Request timed out - content may be too large or complex for processing';
+      statusCode = 408;
+      errorType = 'TIMEOUT_ERROR';
+    } else if (lastError?.message?.includes('quota') || lastError?.status === 429) {
+      errorMessage = 'All API keys have exceeded quota - please try again later';
+      statusCode = 429;
+      errorType = 'QUOTA_EXCEEDED';
+    } else if (lastError?.message?.includes('invalid') || lastError?.status === 400) {
+      errorMessage = 'Invalid request format or content';
+      statusCode = 400;
+      errorType = 'INVALID_REQUEST';
+    } else if (lastError?.message?.includes('SAFETY')) {
+      errorMessage = 'Content was blocked by safety filters';
+      statusCode = 400;
+      errorType = 'SAFETY_FILTER';
+    } else if (lastError?.status === 502 || lastError?.status === 503) {
+      errorMessage = 'Gemini API service temporarily unavailable';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
+    } else if (lastError?.message?.includes('import') || lastError?.message?.includes('module')) {
+      errorMessage = 'Service initialization failed - dependency issue';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
+    } else if (lastError?.message?.includes('API key') || lastError?.status === 401) {
+      errorMessage = 'API authentication failed';
+      statusCode = 401;
+      errorType = 'AUTH_ERROR';
+    } else if (lastError?.message?.includes('Failed to load')) {
+      errorMessage = 'Service dependencies failed to load';
+      statusCode = 503;
+      errorType = 'SERVICE_UNAVAILABLE';
+    }
+    
+    return {
+      statusCode,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        error: errorMessage,
+        details: lastError?.message,
+        type: errorType,
+        keysAttempted: apiKeys.length,
+        suggestion: hasBinaryContent ? 'Try using a smaller file (under 300KB) or convert to text format' : 'Please try again or contact support'
+      }),
+    };
 
   } catch (error: any) {
     console.error('[NETLIFY-GEMINI] Function execution failed:', error);
