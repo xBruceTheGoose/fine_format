@@ -130,6 +130,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 <p className="text-warning text-sm mt-1 font-mono font-bold">
                   MAXIMUM FILE SIZE: {maxBinaryFileSizeMB}MB FOR PDF/DOCX, {maxTextFileSizeMB}MB FOR TEXT FILES
                 </p>
+                <p className="text-error text-xs mt-1 font-mono">
+                  ⚠️ Large files may cause timeouts. Use smaller files for best results.
+                </p>
               </div>
             </div>
             <input

@@ -371,26 +371,28 @@ class GeminiService {
 
     const systemPrompt = `You are an expert content analyst specializing in theme identification for fine-tuning dataset optimization.
 
-OBJECTIVE: Identify 5-8 key themes that will optimize Q&A generation for ${goalConfig?.name} fine-tuning.`;
+OBJECTIVE: Identify 5-8 key themes that will optimize Q&A generation for ${goalConfig?.name} fine-tuning.
+
+CRITICAL: Respond with ONLY a valid JSON array of theme strings. No explanations, markdown, or code blocks.
+
+Example format: ["Theme 1", "Theme 2", "Theme 3"]`;
 
     const userPrompt = `Analyze the content and identify 5-8 key themes optimized for ${goalConfig?.name} fine-tuning.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}
 
-Return a JSON array of 5-8 theme strings.
-
 CONTENT TO ANALYZE:
 ---
 ${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '\n[Content truncated for analysis focus]' : ''}
 ---
 
-Generate the theme array now:`;
+Return ONLY a JSON array of 5-8 theme strings:`;
 
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: 'I understand. I will analyze the content and identify 5-8 key themes optimized for your fine-tuning goal.' },
+        { role: 'assistant', content: 'I understand. I will analyze the content and return only a JSON array of key themes.' },
         { role: 'user', content: userPrompt }
       ], 0.3, 1200);
 
@@ -430,24 +432,26 @@ Generate the theme array now:`;
 
     const systemPrompt = `You are an expert content augmentation specialist with access to real-time web search capabilities, optimizing content for ${goalConfig?.name} fine-tuning.
 
-OBJECTIVE: Enhance the original content with targeted web research to create a comprehensive, coherent resource optimized for generating high-quality Q&A pairs for ${goalConfig?.name} fine-tuning.`;
+OBJECTIVE: Enhance the original content with targeted web research to create a comprehensive, coherent resource optimized for generating high-quality Q&A pairs for ${goalConfig?.name} fine-tuning.
+
+CRITICAL: Return ONLY the enhanced, integrated content without commentary or source citations.`;
 
     const userPrompt = `Enhance the original content with targeted web research for ${goalConfig?.name} fine-tuning optimization.
 
 FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 
-Return ONLY the enhanced, integrated content without commentary or source citations.
-
 ORIGINAL CONTENT TO ENHANCE:
 ---
 ${originalContent}
----`;
+---
+
+Return ONLY the enhanced, integrated content:`;
 
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: 'I understand. I will enhance the content with targeted web research while maintaining coherence and optimizing for your fine-tuning goal.' },
+        { role: 'assistant', content: 'I understand. I will enhance the content with targeted web research while maintaining coherence.' },
         { role: 'user', content: userPrompt }
       ], 0.4, 12000, [{ googleSearch: {} }]);
 
@@ -487,7 +491,25 @@ CRITICAL SUCCESS FACTORS:
 - Create questions that test different aspects of understanding
 - Ensure answers are comprehensive yet concise
 - Include both correct and strategically incorrect answers for discrimination training
-- Maintain high quality standards throughout`;
+- Maintain high quality standards throughout
+
+CRITICAL JSON FORMAT REQUIREMENTS:
+1. Respond with ONLY a valid JSON array
+2. No explanations, markdown, or code blocks
+3. Start immediately with [ and end with ]
+4. Each object must have: "user", "model", "isCorrect", "confidence"
+5. Properly escape all strings (use \\" for quotes, \\n for newlines)
+6. No unescaped control characters
+
+Example format:
+[
+  {
+    "user": "What is the main concept?",
+    "model": "The main concept is...",
+    "isCorrect": true,
+    "confidence": 0.9
+  }
+]`;
 
     const userPrompt = `Generate comprehensive Q&A pairs from the provided content for ${goalConfig?.name} fine-tuning.
 
@@ -495,7 +517,7 @@ FINE-TUNING GOAL: ${goalConfig?.name}
 FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
 
 GENERATION REQUIREMENTS:
-- Generate as many high-quality Q&A pairs as the content supports
+- Generate as many high-quality Q&A pairs as the content supports (aim for 50-100 pairs)
 - Aim for approximately 92% correct answers and 8% incorrect answers
 - Ensure variety in question types and complexity levels
 - Cover different aspects and details of the content thoroughly
@@ -509,24 +531,17 @@ QUALITY STANDARDS:
 - All pairs must contribute meaningfully to fine-tuning effectiveness
 - Maintain consistency in style and approach
 
-CRITICAL JSON FORMAT:
-- Respond with ONLY a valid JSON array
-- Start immediately with [ and end with ]
-- Each object: {"user": "question", "model": "answer", "isCorrect": boolean, "confidence": number}
-- Properly escape all strings (use \\" for quotes, \\n for newlines)
-- No markdown, explanations, or code blocks
-
 CONTENT TO PROCESS:
 ---
 ${content.substring(0, 12000)}${content.length > 12000 ? '\n[Content continues but truncated for this request]' : ''}
 ---
 
-Generate Q&A pairs now:`;
+Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: `I understand. I will generate comprehensive Q&A pairs from the content, focusing on quality and relevance for ${goalConfig?.name} fine-tuning.` },
+        { role: 'assistant', content: `I understand. I will generate comprehensive Q&A pairs from the content, focusing on quality and relevance for ${goalConfig?.name} fine-tuning. I will respond with only a valid JSON array.` },
         { role: 'user', content: userPrompt }
       ], 0.6, 10000);
 
@@ -580,7 +595,21 @@ Generate Q&A pairs now:`;
 
     const systemPrompt = `You are an expert dataset analyst specializing in knowledge gap identification for fine-tuning dataset optimization.
 
-OBJECTIVE: Identify 5-8 significant knowledge gaps in the generated Q&A dataset that should be addressed with additional synthetic Q&A pairs to optimize ${goalConfig?.name} fine-tuning effectiveness.`;
+OBJECTIVE: Identify 5-8 significant knowledge gaps in the generated Q&A dataset that should be addressed with additional synthetic Q&A pairs to optimize ${goalConfig?.name} fine-tuning effectiveness.
+
+CRITICAL: Respond with ONLY a valid JSON array. No explanations, markdown, or code blocks.
+
+Example format:
+[
+  {
+    "id": "gap_1",
+    "description": "Specific description",
+    "theme": "related_theme",
+    "priority": "high",
+    "suggestedQuestionTypes": ["type1", "type2"],
+    "relatedConcepts": ["concept1", "concept2"]
+  }
+]`;
 
     const userPrompt = `Analyze the generated Q&A dataset against the original content to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning.
 
@@ -593,27 +622,17 @@ DATASET ANALYSIS CONTEXT:
 - Correct answers: ${generatedQAPairs.filter(p => p.isCorrect).length}
 - Incorrect answers: ${generatedQAPairs.filter(p => !p.isCorrect).length}
 
-Return a JSON array of knowledge gap objects:
-[
-  {
-    "id": "gap_1",
-    "description": "Specific description of the missing knowledge area",
-    "theme": "related_theme_from_original_themes",
-    "priority": "high|medium|low",
-    "suggestedQuestionTypes": ["specific_question_type_1", "specific_question_type_2"],
-    "relatedConcepts": ["concept1", "concept2", "concept3"]
-  }
-]
-
 ORIGINAL CONTENT FOR REFERENCE:
 ---
 ${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '\n[Content truncated for analysis focus]' : ''}
----`;
+---
+
+Return ONLY a JSON array of knowledge gap objects:`;
 
     try {
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
-        { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization.` },
+        { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization and respond with only a JSON array.` },
         { role: 'user', content: userPrompt }
       ], 0.3, 5000);
 

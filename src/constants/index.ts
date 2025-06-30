@@ -28,7 +28,7 @@ export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
 // Very conservative limit for binary files to prevent function timeouts
-export const BINARY_FILE_SIZE_LIMIT = 800 * 1024; // 800KB for binary files (reduced from 1MB)
+export const BINARY_FILE_SIZE_LIMIT = 500 * 1024; // 500KB for binary files (reduced from 800KB)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {

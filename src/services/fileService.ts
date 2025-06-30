@@ -29,7 +29,7 @@ export class FileService {
     
     // Use appropriate size limit based on file type
     const maxSize = isBinaryFile 
-      ? BINARY_FILE_SIZE_LIMIT // 800KB for binary files (PDF/DOCX)
+      ? BINARY_FILE_SIZE_LIMIT // 500KB for binary files (PDF/DOCX)
       : FILE_SIZE_LIMIT; // 5MB for text files
 
     if (file.size > maxSize) {
@@ -85,12 +85,12 @@ export class FileService {
           };
         }
 
-        // Additional validation for base64 size
-        if (content.length > 1.5 * 1024 * 1024) { // 1.5MB base64 limit
+        // Additional validation for base64 size (conservative limit)
+        if (content.length > 700 * 1024) { // 700KB base64 limit
           return {
             ...baseFileData,
             status: 'failed',
-            error: 'File too large after base64 encoding. Please use a smaller file.',
+            error: 'File too large after base64 encoding. Please use a smaller file (under 500KB).',
           };
         }
 
