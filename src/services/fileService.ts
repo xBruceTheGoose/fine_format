@@ -29,7 +29,7 @@ export class FileService {
     
     // Use appropriate size limit based on file type
     const maxSize = isBinaryFile 
-      ? BINARY_FILE_SIZE_LIMIT // 500KB for binary files (PDF/DOCX)
+      ? BINARY_FILE_SIZE_LIMIT // 2MB for binary files (text extraction happens first)
       : FILE_SIZE_LIMIT; // 5MB for text files
 
     if (file.size > maxSize) {
@@ -38,7 +38,7 @@ export class FileService {
       return {
         ...baseFileData,
         status: 'failed',
-        error: `File too large (${fileSizeMB}MB). Maximum size is ${maxSizeMB}MB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files. Large files cause processing timeouts.`,
+        error: `File too large (${fileSizeMB}MB). Maximum size is ${maxSizeMB}MB for ${isBinaryFile ? 'PDF/DOCX' : 'text'} files.`,
       };
     }
 
@@ -85,15 +85,8 @@ export class FileService {
           };
         }
 
-        // Additional validation for base64 size (conservative limit)
-        if (content.length > 700 * 1024) { // 700KB base64 limit
-          return {
-            ...baseFileData,
-            status: 'failed',
-            error: 'File too large after base64 encoding. Please use a smaller file (under 500KB).',
-          };
-        }
-
+        // For binary files, we store base64 but text extraction happens later
+        // No need for strict base64 size limits since we extract text before Gemini
         return {
           ...baseFileData,
           rawContent: content,

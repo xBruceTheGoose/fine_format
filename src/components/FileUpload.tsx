@@ -130,8 +130,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 <p className="text-warning text-sm mt-1 font-mono font-bold">
                   MAXIMUM FILE SIZE: {maxBinaryFileSizeMB}MB FOR PDF/DOCX, {maxTextFileSizeMB}MB FOR TEXT FILES
                 </p>
-                <p className="text-error text-xs mt-1 font-mono">
-                  ⚠️ Large files may cause timeouts. Use smaller files for best results.
+                <p className="text-accent text-xs mt-1 font-mono">
+                  📄 PDF/DOCX files are automatically converted to text before processing
                 </p>
               </div>
             </div>
@@ -188,6 +188,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                         <span className={`${getStatusColor(fileData.status)} font-bold font-mono tracking-wide`}>
                           {getStatusText(fileData.status)}
                         </span>
+                        {fileData.isBinary && (
+                          <>
+                            <span className="text-border">•</span>
+                            <span className="text-accent text-xs font-mono">
+                              TEXT EXTRACTION
+                            </span>
+                          </>
+                        )}
                       </div>
                       {fileData.error && (
                         <p className="text-error text-sm mt-1 font-mono">{fileData.error}</p>

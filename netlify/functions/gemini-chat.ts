@@ -142,13 +142,13 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     console.log(`[NETLIFY-GEMINI] API key found, length: ${GEMINI_API_KEY.length}`);
 
-    // Check for binary content and validate size BEFORE processing
+    // Check for binary content - this should be rare since we extract text first
     const hasBinaryContent = messages.some(msg => 
       msg.parts?.some(part => part.inlineData)
     );
 
     if (hasBinaryContent) {
-      console.log('[NETLIFY-GEMINI] Binary content detected, validating size...');
+      console.log('[NETLIFY-GEMINI] Binary content detected - this should be rare after text extraction');
       
       let totalBinarySize = 0;
       for (const msg of messages) {
@@ -163,8 +163,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       console.log(`[NETLIFY-GEMINI] Total binary content size: ${Math.round(totalBinarySize / 1024)} KB`);
 
-      // Very conservative limit to prevent timeouts
-      const MAX_BINARY_SIZE = 200 * 1024; // 200KB to prevent timeouts
+      // Conservative limit for any remaining binary content
+      const MAX_BINARY_SIZE = 300 * 1024; // 300KB
       if (totalBinarySize > MAX_BINARY_SIZE) {
         return {
           statusCode: 413,
@@ -174,7 +174,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           },
           body: JSON.stringify({ 
             error: `Binary content too large: ${Math.round(totalBinarySize / 1024)}KB. Maximum allowed: ${MAX_BINARY_SIZE / 1024}KB`,
-            details: 'Large files cause function timeouts. Please use smaller files or convert to text.',
+            details: 'Binary content should have been extracted to text. Please contact support.',
             type: 'PAYLOAD_TOO_LARGE'
           }),
         };
@@ -184,7 +184,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     try {
       console.log(`[NETLIFY-GEMINI] Attempting to import @google/genai`);
       
-      // Dynamic import with better error handling
+      // Dynamic import with comprehensive error handling
       let GoogleGenAI;
       try {
         const genaiModule = await import('@google/genai');
@@ -192,7 +192,17 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         console.log('[NETLIFY-GEMINI] Successfully imported @google/genai');
       } catch (importError) {
         console.error('[NETLIFY-GEMINI] Failed to import @google/genai:', importError);
-        throw new Error('Failed to load Gemini SDK. Service temporarily unavailable.');
+        
+        // Try alternative import strategies
+        try {
+          console.log('[NETLIFY-GEMINI] Trying alternative import method...');
+          const { GoogleGenAI: AltGoogleGenAI } = await import('@google/genai');
+          GoogleGenAI = AltGoogleGenAI;
+          console.log('[NETLIFY-GEMINI] Alternative import successful');
+        } catch (altImportError) {
+          console.error('[NETLIFY-GEMINI] Alternative import also failed:', altImportError);
+          throw new Error('Failed to load Gemini SDK. Service temporarily unavailable.');
+        }
       }
 
       const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -395,7 +405,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           error: errorMessage,
           details: error.message,
           type: errorType,
-          suggestion: hasBinaryContent ? 'Try using a smaller file (under 200KB) or convert to text format' : 'Please try again or contact support'
+          suggestion: hasBinaryContent ? 'Binary content should have been extracted to text. Please contact support.' : 'Please try again or contact support'
         }),
       };
     }

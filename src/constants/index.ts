@@ -27,8 +27,8 @@ export const SUPPORTED_BINARY_MIME_TYPES: BinaryMimeType[] = [
 export const ACCEPTED_FILE_EXTENSIONS = ".txt,.md,.html,.jsonl,.pdf,.docx";
 
 export const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB for text files
-// Very conservative limit for binary files to prevent function timeouts
-export const BINARY_FILE_SIZE_LIMIT = 500 * 1024; // 500KB for binary files (reduced from 800KB)
+// Increased binary file limit since we extract text before sending to Gemini
+export const BINARY_FILE_SIZE_LIMIT = 2 * 1024 * 1024; // 2MB for binary files (text extraction happens first)
 
 export const FINE_TUNING_METHODS: FineTuningConfig[] = [
   {
