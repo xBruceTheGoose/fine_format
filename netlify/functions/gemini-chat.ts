@@ -142,6 +142,41 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     console.log(`[NETLIFY-GEMINI] API key found, length: ${GEMINI_API_KEY.length}`);
 
+    // Validate and sanitize parameters with proper defaults and bounds checking
+    let validatedMaxTokens = 4000; // Default value
+    let validatedTemperature = 0.7; // Default value
+
+    // Validate max_tokens parameter
+    if (max_tokens !== undefined && max_tokens !== null) {
+      if (typeof max_tokens === 'number' && !isNaN(max_tokens)) {
+        validatedMaxTokens = Math.min(Math.max(1, Math.floor(max_tokens)), 8000);
+      } else if (typeof max_tokens === 'string') {
+        const parsed = parseInt(max_tokens, 10);
+        if (!isNaN(parsed)) {
+          validatedMaxTokens = Math.min(Math.max(1, parsed), 8000);
+        }
+      }
+    }
+
+    // Validate temperature parameter
+    if (temperature !== undefined && temperature !== null) {
+      if (typeof temperature === 'number' && !isNaN(temperature)) {
+        validatedTemperature = Math.max(0, Math.min(1, temperature));
+      } else if (typeof temperature === 'string') {
+        const parsed = parseFloat(temperature);
+        if (!isNaN(parsed)) {
+          validatedTemperature = Math.max(0, Math.min(1, parsed));
+        }
+      }
+    }
+
+    console.log('[NETLIFY-GEMINI] Validated parameters:', {
+      originalMaxTokens: max_tokens,
+      validatedMaxTokens,
+      originalTemperature: temperature,
+      validatedTemperature
+    });
+
     // Check for binary content - this should be rare since we extract text first
     const hasBinaryContent = messages.some(msg => 
       msg.parts?.some(part => part.inlineData)
@@ -242,12 +277,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
       console.log(`[NETLIFY-GEMINI] Converted ${contents.length} messages to Gemini format`);
 
-      // Build request configuration with comprehensive validation
+      // Build request configuration with validated parameters
       const requestConfig: any = {
         contents,
         generationConfig: {
-          maxOutputTokens: Math.min(Math.max(1, max_tokens || 4000), 8000),
-          temperature: Math.max(0, Math.min(1, temperature || 0.7)),
+          maxOutputTokens: validatedMaxTokens,
+          temperature: validatedTemperature,
           topP: 0.95,
           topK: 40,
           ...config

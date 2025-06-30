@@ -40,13 +40,22 @@ class GeminiService {
       }
     }
 
-    // Validate parameters
-    if (typeof temperature !== 'number' || temperature < 0 || temperature > 1) {
-      throw new Error('Temperature must be a number between 0 and 1');
-    }
-    if (typeof maxTokens !== 'number' || maxTokens < 1 || maxTokens > 8000) {
-      throw new Error('Max tokens must be a number between 1 and 8000');
-    }
+    // Validate and sanitize parameters
+    const validatedTemperature = typeof temperature === 'number' && !isNaN(temperature) 
+      ? Math.max(0, Math.min(1, temperature)) 
+      : 0.7;
+
+    const validatedMaxTokens = typeof maxTokens === 'number' && !isNaN(maxTokens)
+      ? Math.min(Math.max(1, Math.floor(maxTokens)), 8000)
+      : 4000;
+
+    console.log('[GEMINI] Validated parameters:', {
+      originalTemperature: temperature,
+      validatedTemperature,
+      originalMaxTokens: maxTokens,
+      validatedMaxTokens,
+      messageCount: messages.length
+    });
 
     try {
       console.log('[GEMINI] Sending request with', messages.length, 'messages');
@@ -58,8 +67,8 @@ class GeminiService {
         },
         body: JSON.stringify({
           messages,
-          temperature,
-          max_tokens: maxTokens,
+          temperature: validatedTemperature,
+          max_tokens: validatedMaxTokens,
           tools,
           config
         }),
