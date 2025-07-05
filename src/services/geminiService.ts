@@ -1,5 +1,6 @@
 import { QAPair, GroundingMetadata, FineTuningGoal, KnowledgeGap } from '../types';
 import { FINE_TUNING_GOALS, INCORRECT_ANSWER_RATIO } from '../constants';
+import { openRouterService } from './openRouterService';
 
 class GeminiService {
   private baseUrl = '/.netlify/functions/gemini-chat';
@@ -511,12 +512,55 @@ Return ONLY the enhanced, integrated content:`;
   public async generateQAPairs(
     content: string, 
     themes: string[] = [],
-    fineTuningGoal: FineTuningGoal = 'knowledge'
+    fineTuningGoal: FineTuningGoal = 'knowledge',
+    useOpenRouterFallback: boolean = true
   ): Promise<QAPair[]> {
     if (!content || content.length < 50) {
       throw new Error('Content too short for Q&A generation (minimum 50 characters)');
     }
 
+    // Try Gemini first
+    try {
+      return await this.generateQAPairsWithGemini(content, themes, fineTuningGoal);
+    } catch (geminiError: any) {
+      console.error('[GEMINI] Primary Q&A generation failed:', geminiError.message);
+      
+      // Check if we should try OpenRouter fallback
+      if (useOpenRouterFallback && this.shouldFallbackToOpenRouter(geminiError)) {
+        console.log('[GEMINI] Attempting OpenRouter fallback for Q&A generation');
+        try {
+          return await this.generateQAPairsWithOpenRouter(content, themes, fineTuningGoal);
+        } catch (openRouterError: any) {
+          console.error('[GEMINI] OpenRouter fallback also failed:', openRouterError.message);
+          // Throw the original Gemini error with fallback info
+          throw new Error(`Primary service failed: ${geminiError.message}\n\nFallback service also failed: ${openRouterError.message}`);
+        }
+      }
+      
+      // Re-throw original error if no fallback or fallback not applicable
+      throw geminiError;
+    }
+  }
+
+  private shouldFallbackToOpenRouter(error: any): boolean {
+    const errorMessage = error.message?.toLowerCase() || '';
+    
+    // Fallback for these types of errors
+    return errorMessage.includes('temporarily unavailable') ||
+           errorMessage.includes('all available api keys') ||
+           errorMessage.includes('service unavailable') ||
+           errorMessage.includes('quota exceeded') ||
+           errorMessage.includes('authentication failed') ||
+           errorMessage.includes('502') ||
+           errorMessage.includes('503') ||
+           errorMessage.includes('timeout');
+  }
+
+  private async generateQAPairsWithGemini(
+    content: string,
+    themes: string[] = [],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<QAPair[]> {
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = themes.length > 0 
       ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure comprehensive coverage of these themes across the generated Q&A pairs.`
@@ -619,6 +663,109 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
     } catch (error: any) {
       console.error(`[GEMINI] Q&A generation failed:`, error);
       throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
+    }
+  }
+
+  private async generateQAPairsWithOpenRouter(
+    content: string,
+    themes: string[] = [],
+    fineTuningGoal: FineTuningGoal = 'knowledge'
+  ): Promise<QAPair[]> {
+    console.log('[GEMINI] Using OpenRouter fallback for Q&A generation');
+    
+    if (!openRouterService.isReady()) {
+      throw new Error('OpenRouter fallback service is not available');
+    }
+
+    const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
+    const themeGuidance = themes.length > 0 
+      ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure comprehensive coverage of these themes across the generated Q&A pairs.`
+      : '';
+
+    const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
+
+OBJECTIVE: Generate comprehensive Q&A pairs from the provided content. Focus on creating diverse, relevant questions with accurate answers that will optimize ${goalConfig?.name} fine-tuning.
+
+CRITICAL SUCCESS FACTORS:
+- Extract maximum value from every piece of content
+- Create questions that test different aspects of understanding
+- Ensure answers are comprehensive yet concise
+- Include both correct and strategically incorrect answers for discrimination training
+- Maintain high quality standards throughout
+
+CRITICAL JSON FORMAT REQUIREMENTS:
+1. Respond with ONLY a valid JSON array
+2. No explanations, markdown, or code blocks
+3. Start immediately with [ and end with ]
+4. Each object must have: "user", "model", "isCorrect", "confidence"
+5. Properly escape all strings (use \\" for quotes, \\n for newlines)
+6. No unescaped control characters`;
+
+    const userPrompt = `Generate comprehensive Q&A pairs from the provided content for ${goalConfig?.name} fine-tuning using OpenRouter fallback.
+
+FINE-TUNING GOAL: ${goalConfig?.name}
+FOCUS: ${goalConfig?.promptFocus}${themeGuidance}
+
+GENERATION REQUIREMENTS:
+- Generate as many high-quality Q&A pairs as the content supports (aim for 50-100 pairs)
+- Aim for approximately 92% correct answers and 8% incorrect answers
+- Ensure variety in question types and complexity levels
+- Cover different aspects and details of the content thoroughly
+- Make incorrect answers plausible but clearly wrong to aid discrimination training
+- Focus on content that directly supports the ${goalConfig?.name} objective
+
+QUALITY STANDARDS:
+- Questions must be clear, specific, and answerable from the content
+- Correct answers must be accurate, comprehensive, and well-structured
+- Incorrect answers must be plausible but factually wrong
+- All pairs must contribute meaningfully to fine-tuning effectiveness
+- Maintain consistency in style and approach
+
+CONTENT TO PROCESS:
+---
+${content.substring(0, 12000)}${content.length > 12000 ? '\n[Content continues but truncated for this request]' : ''}
+---
+
+Generate Q&A pairs now (respond with ONLY the JSON array):`;
+
+    try {
+      // Use OpenRouter service to make the request
+      const response = await openRouterService.makeRequest([
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ], 0.6, 10000);
+
+      const qaData = openRouterService.parseJsonResponse(response);
+
+      if (!Array.isArray(qaData)) {
+        throw new Error('OpenRouter response is not a valid JSON array');
+      }
+
+      const validPairs = qaData.filter(
+        (item): item is QAPair =>
+          this.isValidQAPair(item)
+      ).map(pair => ({
+        ...pair,
+        confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
+        source: 'original' as const
+      }));
+
+      console.log(`[GEMINI] OpenRouter fallback Q&A generation completed:`, {
+        received: qaData.length,
+        valid: validPairs.length,
+        correct: validPairs.filter(p => p.isCorrect).length,
+        incorrect: validPairs.filter(p => !p.isCorrect).length
+      });
+
+      if (validPairs.length === 0) {
+        throw new Error('OpenRouter fallback failed to generate any valid Q&A pairs');
+      }
+
+      return this.shuffleArray(validPairs);
+
+    } catch (error: any) {
+      console.error('[GEMINI] OpenRouter fallback Q&A generation failed:', error);
+      throw new Error(`OpenRouter fallback failed: ${error.message || 'Unknown error'}`);
     }
   }
 
