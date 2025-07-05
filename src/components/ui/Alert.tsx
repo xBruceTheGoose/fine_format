@@ -50,7 +50,26 @@ export const Alert: React.FC<AlertProps> = ({
             {title}
           </h4>
         )}
-        <p className="text-sm font-medium">{message}</p>
+        <div className="text-sm font-medium">
+          {message.split('\n').map((line, index) => (
+            <p key={index} className={index > 0 ? 'mt-2' : ''}>
+              {line}
+            </p>
+          ))}
+          
+          {/* Add helpful suggestions for service unavailable errors */}
+          {message.includes('temporarily unavailable') && (
+            <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
+              <p className="font-semibold mb-2">💡 What you can do:</p>
+              <ul className="text-xs space-y-1 list-disc list-inside">
+                <li>Wait 2-3 minutes and try again</li>
+                <li>Check Google's service status if the issue persists</li>
+                <li>Try with smaller content or fewer files</li>
+                <li>Contact support if the problem continues</li>
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
       {onClose && (
         <button

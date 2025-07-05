@@ -135,13 +135,20 @@ class GeminiService {
         throw new Error('Network error - unable to connect to Gemini service. Please check your connection.');
       }
       
+      // Enhanced error handling for service unavailable
+      if (error.message.includes('temporarily unavailable') || 
+          error.message.includes('503') ||
+          error.message.includes('502')) {
+        throw new Error('Gemini API service is temporarily unavailable. This is usually temporary - please try again in a few minutes.');
+      }
+      
       // Re-throw with original message if it's already a user-friendly error
       if (error.message.includes('timed out') || 
           error.message.includes('quota') || 
           error.message.includes('too large') ||
-          error.message.includes('unavailable') ||
           error.message.includes('authentication') ||
-          error.message.includes('safety filters')) {
+          error.message.includes('safety filters') ||
+          error.message.includes('few minutes')) {
         throw error;
       }
       

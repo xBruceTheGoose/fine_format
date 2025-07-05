@@ -122,12 +122,12 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       }
     }
 
-    // Check for multiple API keys with fallback
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    const GEMINI_API_KEY_2 = process.env.GEMINI_API_KEY_2;
-    const GEMINI_API_KEY_3 = process.env.GEMINI_API_KEY_3;
+    // Enhanced API key management with better error handling
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
+    const GEMINI_API_KEY_2 = process.env.GEMINI_API_KEY_2?.trim();
+    const GEMINI_API_KEY_3 = process.env.GEMINI_API_KEY_3?.trim();
     
-    const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3].filter(key => key?.trim());
+    const apiKeys = [GEMINI_API_KEY, GEMINI_API_KEY_2, GEMINI_API_KEY_3].filter(key => key && key.length > 10);
     
     if (apiKeys.length === 0) {
       console.error('[NETLIFY-GEMINI] No API keys configured');
@@ -146,33 +146,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
 
     console.log(`[NETLIFY-GEMINI] Available API keys: ${apiKeys.length}`);
 
-    // Validate and sanitize parameters with proper defaults and bounds checking
-    let validatedMaxTokens = 4000; // Default value
-    let validatedTemperature = 0.7; // Default value
-
-    // Validate max_tokens parameter
-    if (max_tokens !== undefined && max_tokens !== null) {
-      if (typeof max_tokens === 'number' && !isNaN(max_tokens)) {
-        validatedMaxTokens = Math.min(Math.max(1, Math.floor(max_tokens)), 8000);
-      } else if (typeof max_tokens === 'string') {
-        const parsed = parseInt(max_tokens, 10);
-        if (!isNaN(parsed)) {
-          validatedMaxTokens = Math.min(Math.max(1, parsed), 8000);
-        }
-      }
-    }
-
-    // Validate temperature parameter
-    if (temperature !== undefined && temperature !== null) {
-      if (typeof temperature === 'number' && !isNaN(temperature)) {
-        validatedTemperature = Math.max(0, Math.min(1, temperature));
-      } else if (typeof temperature === 'string') {
-        const parsed = parseFloat(temperature);
-        if (!isNaN(parsed)) {
-          validatedTemperature = Math.max(0, Math.min(1, parsed));
-        }
-      }
-    }
+    // Enhanced parameter validation with better error handling
+    const validatedMaxTokens = validateInteger(max_tokens, 1, 8000, 4000);
+    const validatedTemperature = validateNumber(temperature, 0, 1, 0.7);
 
     console.log('[NETLIFY-GEMINI] Validated parameters:', {
       originalMaxTokens: max_tokens,
@@ -221,14 +197,18 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     }
 
     let lastError: any = null;
+    let retryCount = 0;
+    const maxRetries = apiKeys.length * 2; // Allow retries across all keys
     
-    // Try each API key in sequence with comprehensive error handling
-    for (let i = 0; i < apiKeys.length; i++) {
-      const apiKey = apiKeys[i];
-      const keyNumber = i + 1;
+    // Enhanced retry logic with exponential backoff
+    while (retryCount < maxRetries) {
+      const keyIndex = retryCount % apiKeys.length;
+      const apiKey = apiKeys[keyIndex];
+      const keyNumber = keyIndex + 1;
+      const attemptNumber = Math.floor(retryCount / apiKeys.length) + 1;
       
       try {
-        console.log(`[NETLIFY-GEMINI] Trying API key ${keyNumber}/${apiKeys.length}`);
+        console.log(`[NETLIFY-GEMINI] Attempt ${retryCount + 1}/${maxRetries}: API key ${keyNumber}/${apiKeys.length}, retry ${attemptNumber}`);
         
         // Dynamic import with better error handling
         let GoogleGenAI;
@@ -303,8 +283,9 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           hasBinaryContent
         });
 
-        // Set realistic timeout for Netlify functions
-        const timeoutMs = hasBinaryContent ? 20000 : 25000; // 20s for binary, 25s for text
+        // Enhanced timeout with retry consideration
+        const baseTimeout = hasBinaryContent ? 15000 : 20000;
+        const timeoutMs = baseTimeout + (attemptNumber * 2000); // Increase timeout on retries
         
         const controller = new AbortController();
         const timeoutId = setTimeout(() => {
@@ -317,7 +298,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
           
           // Use the correct model and method with proper error handling
           const model = ai.getGenerativeModel({ 
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-1.5-flash', // Use more stable model
             generationConfig: requestConfig.generationConfig,
             tools: requestConfig.tools
           });
@@ -380,19 +361,20 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
               usage: response.response.usageMetadata,
               finishReason: finishReason,
               truncated: wasTruncated,
-              keyUsed: keyNumber
+              keyUsed: keyNumber,
+              attemptNumber: attemptNumber
             }),
           };
 
         } catch (requestError: any) {
           clearTimeout(timeoutId);
-          console.error(`[NETLIFY-GEMINI] Request error with key ${keyNumber}:`, requestError);
+          console.error(`[NETLIFY-GEMINI] Request error with key ${keyNumber}, attempt ${attemptNumber}:`, requestError);
           throw requestError;
         }
 
       } catch (error: any) {
         lastError = error;
-        console.error(`[NETLIFY-GEMINI] Key ${keyNumber} failed:`, error.message);
+        console.error(`[NETLIFY-GEMINI] Key ${keyNumber}, attempt ${attemptNumber} failed:`, error.message);
         
         // Check if this is a quota/rate limit error
         const isQuotaError = error.message?.includes('quota') || 
@@ -407,24 +389,45 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
                               error.code === 'ETIMEDOUT' ||
                               error.name === 'AbortError';
 
+        // Check if this is a service unavailable error
+        const isServiceError = error.message?.includes('unavailable') ||
+                              error.message?.includes('503') ||
+                              error.message?.includes('502') ||
+                              error.status === 503 ||
+                              error.status === 502;
+
         if (isQuotaError) {
-          console.warn(`[NETLIFY-GEMINI] Quota/rate limit detected on key ${keyNumber}, trying next key`);
-          continue; // Try next key immediately for quota errors
+          console.warn(`[NETLIFY-GEMINI] Quota/rate limit detected on key ${keyNumber}, trying next`);
+          retryCount++;
+          continue;
         }
 
         if (isTimeoutError) {
-          console.warn(`[NETLIFY-GEMINI] Timeout detected on key ${keyNumber}, trying next key`);
-          continue; // Try next key for timeout errors
+          console.warn(`[NETLIFY-GEMINI] Timeout detected on key ${keyNumber}, trying next`);
+          retryCount++;
+          continue;
         }
 
-        // For other errors, still try the next key but log the error type
-        console.warn(`[NETLIFY-GEMINI] Error with key ${keyNumber}: ${error.message}, trying next key`);
-        continue;
+        if (isServiceError) {
+          console.warn(`[NETLIFY-GEMINI] Service error detected on key ${keyNumber}, retrying with backoff`);
+          // Add exponential backoff for service errors
+          if (attemptNumber < 3) {
+            const backoffMs = Math.pow(2, attemptNumber) * 1000;
+            console.log(`[NETLIFY-GEMINI] Waiting ${backoffMs}ms before retry`);
+            await new Promise(resolve => setTimeout(resolve, backoffMs));
+          }
+          retryCount++;
+          continue;
+        }
+
+        // For other errors, try next key/attempt
+        console.warn(`[NETLIFY-GEMINI] Error with key ${keyNumber}: ${error.message}, trying next`);
+        retryCount++;
       }
     }
 
-    // All keys failed - comprehensive error handling
-    console.error(`[NETLIFY-GEMINI] All ${apiKeys.length} API keys failed`);
+    // All attempts failed - comprehensive error handling
+    console.error(`[NETLIFY-GEMINI] All ${maxRetries} attempts failed across ${apiKeys.length} API keys`);
     console.error(`[NETLIFY-GEMINI] Final error details:`, {
       message: lastError?.message,
       name: lastError?.name,
@@ -453,8 +456,8 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
       errorMessage = 'Content was blocked by safety filters';
       statusCode = 400;
       errorType = 'SAFETY_FILTER';
-    } else if (lastError?.status === 502 || lastError?.status === 503) {
-      errorMessage = 'Gemini API service temporarily unavailable';
+    } else if (lastError?.status === 502 || lastError?.status === 503 || lastError?.message?.includes('unavailable')) {
+      errorMessage = 'Gemini API service temporarily unavailable - please try again in a few minutes';
       statusCode = 503;
       errorType = 'SERVICE_UNAVAILABLE';
     } else if (lastError?.message?.includes('import') || lastError?.message?.includes('module')) {
@@ -481,6 +484,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
         error: errorMessage,
         details: lastError?.message,
         type: errorType,
+        attemptsTotal: maxRetries,
         keysAttempted: apiKeys.length,
         suggestion: hasBinaryContent ? 'Try using a smaller file (under 300KB) or convert to text format' : 'Please try again or contact support'
       }),
@@ -504,3 +508,30 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     };
   }
 };
+
+// Helper functions for parameter validation
+function validateNumber(value: any, min: number, max: number, defaultValue: number): number {
+  if (typeof value === 'number' && !isNaN(value)) {
+    return Math.max(min, Math.min(max, value));
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    if (!isNaN(parsed)) {
+      return Math.max(min, Math.min(max, parsed));
+    }
+  }
+  return defaultValue;
+}
+
+function validateInteger(value: any, min: number, max: number, defaultValue: number): number {
+  if (typeof value === 'number' && !isNaN(value)) {
+    return Math.min(Math.max(min, Math.floor(value)), max);
+  }
+  if (typeof value === 'string') {
+    const parsed = parseInt(value, 10);
+    if (!isNaN(parsed)) {
+      return Math.min(Math.max(min, parsed), max);
+    }
+  }
+  return defaultValue;
+}

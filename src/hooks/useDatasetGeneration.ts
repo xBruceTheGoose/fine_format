@@ -299,6 +299,13 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         console.log(`[DATASET_GENERATION] Generated ${combinedQAPairs.length} Q&A pairs from combined content`);
       } catch (qaError: any) {
         console.error('[DATASET_GENERATION] Failed to generate Q&A from combined content:', qaError);
+        
+        // Enhanced error handling for service unavailable
+        if (qaError.message.includes('temporarily unavailable') || 
+            qaError.message.includes('few minutes')) {
+          throw new Error(`The AI service is temporarily unavailable. This is usually a brief issue with Google's servers. Please wait 2-3 minutes and try again.`);
+        }
+        
         throw new Error(`Failed to generate Q&A pairs: ${qaError.message}`);
       }
 
