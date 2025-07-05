@@ -535,3 +535,24 @@ function validateInteger(value: any, min: number, max: number, defaultValue: num
   }
   return defaultValue;
 }
+
+function getSuggestionForError(errorType: string, hasBinaryContent: boolean): string {
+  switch (errorType) {
+    case 'AUTH_ERROR':
+      return 'Please check that your Gemini API key is correctly configured in the environment variables';
+    case 'SERVICE_UNAVAILABLE':
+      return 'The service is temporarily unavailable. Please try again in a few minutes';
+    case 'TIMEOUT_ERROR':
+      return hasBinaryContent 
+        ? 'Try using a smaller file (under 2MB) or convert to text format'
+        : 'Try with smaller content or fewer sources';
+    case 'QUOTA_EXCEEDED':
+      return 'API quota exceeded. Please wait or check your API usage limits';
+    case 'PAYLOAD_TOO_LARGE':
+      return 'Content is too large. Try with smaller files or less content';
+    case 'SAFETY_FILTER':
+      return 'Content was blocked by safety filters. Please modify your content';
+    default:
+      return 'Please try again or contact support if the issue persists';
+  }
+}
