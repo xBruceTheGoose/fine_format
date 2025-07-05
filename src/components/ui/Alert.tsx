@@ -63,9 +63,22 @@ export const Alert: React.FC<AlertProps> = ({
               <p className="font-semibold mb-2">💡 What you can do:</p>
               <ul className="text-xs space-y-1 list-disc list-inside">
                 <li>Wait 2-3 minutes and try again</li>
-                <li>Check Google's service status if the issue persists</li>
+                <li>The system will automatically try backup services</li>
                 <li>Try with smaller content or fewer files</li>
                 <li>Contact support if the problem continues</li>
+              </ul>
+            </div>
+          )}
+          
+          {/* Add suggestions for fallback service failures */}
+          {(message.includes('Primary service failed') || message.includes('Fallback service')) && (
+            <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
+              <p className="font-semibold mb-2">🔄 Service Fallback Information:</p>
+              <ul className="text-xs space-y-1 list-disc list-inside">
+                <li>The system automatically tries backup services when the primary fails</li>
+                <li>Both primary (Gemini) and backup (OpenRouter) services are currently unavailable</li>
+                <li>This is usually temporary - wait 5-10 minutes and try again</li>
+                <li>Contact support if the issue persists for more than 30 minutes</li>
               </ul>
             </div>
           )}
@@ -75,9 +88,9 @@ export const Alert: React.FC<AlertProps> = ({
             <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
               <p className="font-semibold mb-2">🔑 API Key Issues:</p>
               <ul className="text-xs space-y-1 list-disc list-inside">
-                <li>Verify your Gemini API key is correctly set</li>
-                <li>Check that the API key hasn't expired</li>
-                <li>Ensure the API key has proper permissions</li>
+                <li>Verify your API keys (Gemini & OpenRouter) are correctly set</li>
+                <li>Check that the API keys haven't expired</li>
+                <li>Ensure the API keys have proper permissions</li>
                 <li>Contact support for API key configuration help</li>
               </ul>
             </div>
@@ -89,6 +102,7 @@ export const Alert: React.FC<AlertProps> = ({
               <p className="font-semibold mb-2">🔧 Troubleshooting:</p>
               <ul className="text-xs space-y-1 list-disc list-inside">
                 <li>Wait 5 minutes - this is often temporary</li>
+                <li>The system will automatically try backup services</li>
                 <li>Try with smaller content or fewer files</li>
                 <li>Check your internet connection</li>
                 <li>Contact support if the issue persists</li>

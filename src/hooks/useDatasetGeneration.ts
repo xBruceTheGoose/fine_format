@@ -293,26 +293,30 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         const combinedQAPairs = await geminiService.generateQAPairs(
           overallCombinedCleanedText,
           allIdentifiedThemes,
-          fineTuningGoal
+          fineTuningGoal,
+          true // Enable OpenRouter fallback
         );
         allInitialQAPairs.push(...combinedQAPairs);
         console.log(`[DATASET_GENERATION] Generated ${combinedQAPairs.length} Q&A pairs from combined content`);
       } catch (qaError: any) {
         console.error('[DATASET_GENERATION] Failed to generate Q&A from combined content:', qaError);
         
-        // Enhanced error handling for service unavailable
-        if (qaError.message.includes('temporarily unavailable') || 
-            qaError.message.includes('few minutes')) {
-          throw new Error(`The AI service is temporarily unavailable. This is usually a brief issue with Google's servers.\n\nPlease wait 2-3 minutes and try again.`);
+        // Enhanced error handling with fallback information
+        if (qaError.message.includes('Primary service failed') && qaError.message.includes('Fallback service also failed')) {
+          throw new Error(`Both primary (Gemini) and fallback (OpenRouter) services failed.\n\nThis could be due to:\n• Temporary service outages\n• API key configuration issues\n• Network connectivity problems\n\nPlease wait a few minutes and try again, or contact support.`);
+        }
+        
+        if (qaError.message.includes('OpenRouter fallback failed')) {
+          throw new Error(`Primary service failed and fallback service is unavailable.\n\nPlease wait 2-3 minutes and try again. If the issue persists, contact support.`);
         }
         
         if (qaError.message.includes('authentication') || 
             qaError.message.includes('API key')) {
-          throw new Error(`API authentication failed. Please check that your Gemini API key is correctly configured.\n\nContact support if you need help with API key setup.`);
+          throw new Error(`API authentication failed. Please check that your API keys are correctly configured.\n\nContact support if you need help with API key setup.`);
         }
         
         if (qaError.message.includes('all available API keys')) {
-          throw new Error(`All API keys failed to work. This could be due to:\n\n• Temporary service outage\n• API key configuration issues\n• Network connectivity problems\n\nPlease wait a few minutes and try again, or contact support.`);
+          throw new Error(`All primary API keys failed, but fallback service should have been attempted.\n\nThis could be due to:\n• Temporary service outages\n• API key configuration issues\n• Network connectivity problems\n\nPlease wait a few minutes and try again, or contact support.`);
         }
         
         throw new Error(`Failed to generate Q&A pairs: ${qaError.message}`);

@@ -12,7 +12,21 @@ class OpenRouterService {
     return true;
   }
 
-  private async makeRequest(
+  // Expose makeRequest method for fallback usage
+  public async makeRequest(
+    messages: Array<{ role: string; content: string }>, 
+    temperature = 0.7,
+    maxTokens = 4000
+  ): Promise<string> {
+    return this.makeRequestInternal(messages, temperature, maxTokens);
+  }
+
+  // Expose parseJsonResponse method for fallback usage
+  public parseJsonResponse(responseText: string): any {
+    return this.parseJsonResponseInternal(responseText);
+  }
+
+  private async makeRequestInternal(
     messages: Array<{ role: string; content: string }>, 
     temperature = 0.7,
     maxTokens = 4000
@@ -52,7 +66,7 @@ class OpenRouterService {
     }
   }
 
-  private parseJsonResponse(responseText: string): any {
+  private parseJsonResponseInternal(responseText: string): any {
     console.log('[OPENROUTER] Parsing JSON response, length:', responseText.length);
     
     let jsonStr = responseText.trim();
@@ -594,7 +608,7 @@ Generate Q&A pairs now:`;
       
       let syntheticPairs: any[];
       try {
-        syntheticPairs = this.parseJsonResponse(response);
+        syntheticPairs = this.parseJsonResponseInternal(response);
       } catch (parseError) {
         console.error(`[OPENROUTER] Failed to parse JSON response for gap ${knowledgeGap.id}:`, parseError.message);
         console.warn(`[OPENROUTER] Returning empty array for gap ${knowledgeGap.id} due to parsing failure`);
