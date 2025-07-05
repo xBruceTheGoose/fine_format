@@ -40,14 +40,9 @@ class GeminiService {
       }
     }
 
-    // Validate and sanitize parameters
-    const validatedTemperature = typeof temperature === 'number' && !isNaN(temperature) 
-      ? Math.max(0, Math.min(1, temperature)) 
-      : 0.7;
-
-    const validatedMaxTokens = typeof maxTokens === 'number' && !isNaN(maxTokens)
-      ? Math.min(Math.max(1, Math.floor(maxTokens)), 8000)
-      : 4000;
+    // Validate and sanitize parameters with proper defaults
+    const validatedTemperature = this.validateNumber(temperature, 0, 1, 0.7);
+    const validatedMaxTokens = this.validateInteger(maxTokens, 1, 8000, 4000);
 
     console.log('[GEMINI] Validated parameters:', {
       originalTemperature: temperature,
@@ -154,6 +149,32 @@ class GeminiService {
     }
   }
 
+  private validateNumber(value: any, min: number, max: number, defaultValue: number): number {
+    if (typeof value === 'number' && !isNaN(value)) {
+      return Math.max(min, Math.min(max, value));
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        return Math.max(min, Math.min(max, parsed));
+      }
+    }
+    return defaultValue;
+  }
+
+  private validateInteger(value: any, min: number, max: number, defaultValue: number): number {
+    if (typeof value === 'number' && !isNaN(value)) {
+      return Math.min(Math.max(min, Math.floor(value)), max);
+    }
+    if (typeof value === 'string') {
+      const parsed = parseInt(value, 10);
+      if (!isNaN(parsed)) {
+        return Math.min(Math.max(min, parsed), max);
+      }
+    }
+    return defaultValue;
+  }
+
   private parseJsonResponse(responseText: string): any {
     console.log('[GEMINI] Parsing JSON response, length:', responseText.length);
     
@@ -183,7 +204,7 @@ class GeminiService {
         console.log('[GEMINI] ✅ Direct parsing successful with', parsed.length, 'items');
         return parsed;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[GEMINI] Direct parsing failed:', error.message);
     }
 
@@ -198,7 +219,7 @@ class GeminiService {
           return parsed;
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[GEMINI] Array extraction failed:', error.message);
     }
 
@@ -210,7 +231,7 @@ class GeminiService {
         console.log('[GEMINI] ✅ Fixed JSON parsing successful with', parsed.length, 'items');
         return parsed;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[GEMINI] Fixed JSON parsing failed:', error.message);
     }
 
@@ -221,7 +242,7 @@ class GeminiService {
         console.log('[GEMINI] ✅ Object extraction successful with', extractedObjects.length, 'items');
         return extractedObjects;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[GEMINI] Object extraction failed:', error.message);
     }
 
@@ -232,7 +253,7 @@ class GeminiService {
         console.log('[GEMINI] ⚠️ Partial recovery successful with', partialObjects.length, 'items');
         return partialObjects;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.warn('[GEMINI] Partial recovery failed:', error.message);
     }
 
@@ -281,7 +302,7 @@ class GeminiService {
         if (this.isValidQAPair(obj)) {
           validObjects.push(obj);
         }
-      } catch (error) {
+      } catch (error: any) {
         console.warn('[GEMINI] Failed to parse extracted object:', error.message);
       }
     }
@@ -346,7 +367,7 @@ class GeminiService {
             if (this.isValidQAPair(obj)) {
               objects.push(obj);
             }
-          } catch (error) {
+          } catch (error: any) {
             console.warn('[GEMINI] Failed to parse recovered object:', error.message);
           }
           objectStart = -1;
