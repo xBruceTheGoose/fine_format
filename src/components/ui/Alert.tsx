@@ -69,6 +69,32 @@ export const Alert: React.FC<AlertProps> = ({
               </ul>
             </div>
           )}
+          
+          {/* Add suggestions for API key issues */}
+          {(message.includes('authentication') || message.includes('API key')) && (
+            <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
+              <p className="font-semibold mb-2">🔑 API Key Issues:</p>
+              <ul className="text-xs space-y-1 list-disc list-inside">
+                <li>Verify your Gemini API key is correctly set</li>
+                <li>Check that the API key hasn't expired</li>
+                <li>Ensure the API key has proper permissions</li>
+                <li>Contact support for API key configuration help</li>
+              </ul>
+            </div>
+          )}
+          
+          {/* Add suggestions for all keys failing */}
+          {message.includes('all available API keys') && (
+            <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
+              <p className="font-semibold mb-2">🔧 Troubleshooting:</p>
+              <ul className="text-xs space-y-1 list-disc list-inside">
+                <li>Wait 5 minutes - this is often temporary</li>
+                <li>Try with smaller content or fewer files</li>
+                <li>Check your internet connection</li>
+                <li>Contact support if the issue persists</li>
+              </ul>
+            </div>
+          )}
         </div>
       </div>
       {onClose && (

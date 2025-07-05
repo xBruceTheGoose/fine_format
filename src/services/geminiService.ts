@@ -85,21 +85,26 @@ class GeminiService {
         // Handle specific error types with user-friendly messages
         if (errorData.type === 'TIMEOUT_ERROR') {
           throw new Error('Request timed out - content may be too large. Try using smaller content or files.');
+        } else if (errorData.type === 'AUTH_ERROR') {
+          throw new Error('API authentication failed. Please check your Gemini API key configuration.');
         } else if (errorData.type === 'QUOTA_EXCEEDED') {
           throw new Error('API quota exceeded - please try again later.');
         } else if (errorData.type === 'PAYLOAD_TOO_LARGE') {
           throw new Error('Content too large for processing. Please use smaller files.');
         } else if (errorData.type === 'SERVICE_UNAVAILABLE') {
           throw new Error('Gemini API service is temporarily unavailable. Please try again.');
-        } else if (errorData.type === 'AUTH_ERROR') {
-          throw new Error('API authentication failed. Please check your API key configuration.');
         } else if (errorData.type === 'INVALID_REQUEST') {
           throw new Error('Invalid request format. Please check your input.');
         } else if (errorData.type === 'SAFETY_FILTER') {
           throw new Error('Content was blocked by safety filters. Please modify your content.');
         }
         
-        throw new Error(`Netlify function error: ${response.status} - ${errorData.error || 'Unknown error'}`);
+        // Enhanced error message with debug info
+        let errorMsg = `Netlify function error: ${response.status} - ${errorData.error || 'Unknown error'}`;
+        if (errorData.debugInfo) {
+          errorMsg += `\n\nDebug info: ${JSON.stringify(errorData.debugInfo, null, 2)}`;
+        }
+        throw new Error(errorMsg);
       }
 
       let data;

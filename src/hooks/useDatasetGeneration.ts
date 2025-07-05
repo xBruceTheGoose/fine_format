@@ -303,7 +303,16 @@ export const useDatasetGeneration = (): UseDatasetGenerationReturn => {
         // Enhanced error handling for service unavailable
         if (qaError.message.includes('temporarily unavailable') || 
             qaError.message.includes('few minutes')) {
-          throw new Error(`The AI service is temporarily unavailable. This is usually a brief issue with Google's servers. Please wait 2-3 minutes and try again.`);
+          throw new Error(`The AI service is temporarily unavailable. This is usually a brief issue with Google's servers.\n\nPlease wait 2-3 minutes and try again.`);
+        }
+        
+        if (qaError.message.includes('authentication') || 
+            qaError.message.includes('API key')) {
+          throw new Error(`API authentication failed. Please check that your Gemini API key is correctly configured.\n\nContact support if you need help with API key setup.`);
+        }
+        
+        if (qaError.message.includes('all available API keys')) {
+          throw new Error(`All API keys failed to work. This could be due to:\n\n• Temporary service outage\n• API key configuration issues\n• Network connectivity problems\n\nPlease wait a few minutes and try again, or contact support.`);
         }
         
         throw new Error(`Failed to generate Q&A pairs: ${qaError.message}`);
