@@ -6,11 +6,21 @@ class GeminiService {
   private baseUrl = '/.netlify/functions/gemini-chat';
 
   constructor() {
+    this.validateService();
     console.log('[GEMINI] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
     return true;
+  }
+
+  private validateService(): void {
+    // Basic service validation
+    if (typeof fetch === 'undefined') {
+      console.error('[GEMINI] Fetch API not available');
+      throw new Error('Fetch API not available');
+    }
+    console.log('[GEMINI] Service validation passed');
   }
 
   private async makeRequest(
@@ -20,11 +30,22 @@ class GeminiService {
     tools?: any,
     config?: any
   ): Promise<{ content: string; groundingMetadata?: GroundingMetadata; truncated?: boolean }> {
+    
+    if (!this.isReady()) {
+      throw new Error('Gemini service is not ready');
+    }
+
     console.log('[GEMINI] Making request to Netlify function');
 
     // Comprehensive input validation
     if (!Array.isArray(messages) || messages.length === 0) {
       throw new Error('Messages array is required and cannot be empty');
+    }
+
+    // Validate message content size
+    const totalContentSize = this.calculateContentSize(messages);
+    if (totalContentSize > 1000000) { // 1MB limit
+      throw new Error('Total message content exceeds size limit (1MB)');
     }
 
     // Validate each message
@@ -41,6 +62,16 @@ class GeminiService {
       }
     }
 
+    // Validate tools if provided
+    if (tools && !Array.isArray(tools)) {
+      throw new Error('Tools must be an array');
+    }
+
+    // Validate config if provided
+    if (config && typeof config !== 'object') {
+      throw new Error('Config must be an object');
+    }
+
     // Validate and sanitize parameters with proper defaults
     const validatedTemperature = this.validateNumber(temperature, 0, 1, 0.7);
     const validatedMaxTokens = this.validateInteger(maxTokens, 1, 8000, 4000);
@@ -55,6 +86,7 @@ class GeminiService {
 
     try {
       console.log('[GEMINI] Sending request with', messages.length, 'messages');
+      console.log('[GEMINI] Content size:', totalContentSize, 'bytes');
       
       const response = await fetch(this.baseUrl, {
         method: 'POST',
@@ -62,6 +94,7 @@ class GeminiService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          timestamp: Date.now(), // Add timestamp for debugging
           messages,
           temperature: validatedTemperature,
           max_tokens: validatedMaxTokens,
@@ -69,6 +102,7 @@ class GeminiService {
           config
         }),
       });
+      
 
       console.log('[GEMINI] Response status:', response.status);
 
@@ -76,12 +110,18 @@ class GeminiService {
         let errorData;
         try {
           errorData = await response.json();
+          console.log('[GEMINI] Error response data:', errorData);
         } catch (parseError) {
           console.error('[GEMINI] Failed to parse error response:', parseError);
           errorData = { error: 'Failed to parse error response', type: 'PARSE_ERROR' };
         }
         
         console.error('[GEMINI] Netlify function error:', response.status, errorData);
+        
+        // Check for specific error types that should trigger OpenRouter fallback
+        if (this.shouldFallbackToOpenRouter({ message: errorData.error, status: response.status })) {
+          throw new Error(`FALLBACK_TRIGGER: ${errorData.error || 'Unknown error'}`);
+        }
         
         // Handle specific error types with user-friendly messages
         if (errorData.type === 'TIMEOUT_ERROR') {
@@ -111,6 +151,7 @@ class GeminiService {
       let data;
       try {
         data = await response.json();
+        console.log('[GEMINI] Response data keys:', Object.keys(data));
       } catch (parseError) {
         console.error('[GEMINI] Failed to parse response JSON:', parseError);
         throw new Error('Failed to parse response from Gemini service');
@@ -118,6 +159,7 @@ class GeminiService {
       
       if (!data.content) {
         console.error('[GEMINI] No content in response:', data);
+        console.error('[GEMINI] Available response keys:', Object.keys(data));
         throw new Error('No content received from Gemini service');
       }
 
@@ -125,6 +167,11 @@ class GeminiService {
       
       if (data.truncated) {
         console.warn('[GEMINI] ⚠️ Response was truncated due to token limit');
+      }
+      
+      // Validate response content
+      if (typeof data.content !== 'string' || data.content.trim().length === 0) {
+        throw new Error('Invalid response content from Gemini service');
       }
 
       return {
@@ -135,6 +182,14 @@ class GeminiService {
 
     } catch (error: any) {
       console.error('[GEMINI] Request failed:', error);
+      
+      // Enhanced error context
+      console.error('[GEMINI] Error context:', {
+        messageCount: messages.length,
+        contentSize: totalContentSize,
+        hasTools: !!tools,
+        hasConfig: !!config
+      });
       
       // Re-throw with more context if it's a network error
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -160,6 +215,19 @@ class GeminiService {
       
       throw new Error(`Gemini service request failed: ${error.message || 'Unknown error'}`);
     }
+  }
+
+  private calculateContentSize(messages: Array<{ role: string; content?: string; parts?: any[] }>): number {
+    let totalSize = 0;
+    for (const message of messages) {
+      if (message.content) {
+        totalSize += message.content.length;
+      }
+      if (message.parts) {
+        totalSize += JSON.stringify(message.parts).length;
+      }
+    }
+    return totalSize;
   }
 
   private validateNumber(value: any, min: number, max: number, defaultValue: number): number {
@@ -189,6 +257,10 @@ class GeminiService {
   }
 
   private parseJsonResponse(responseText: string): any {
+    if (!responseText || typeof responseText !== 'string') {
+      throw new Error('Invalid response text for JSON parsing');
+    }
+    
     console.log('[GEMINI] Parsing JSON response, length:', responseText.length);
     
     if (!responseText || responseText.trim().length === 0) {
@@ -209,6 +281,11 @@ class GeminiService {
     return this.parseWithMultipleStrategies(jsonStr, responseText);
   }
 
+  private sanitizeJsonString(jsonStr: string): string {
+    // Remove any potential XSS or injection attempts
+    return jsonStr.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  }
+
   private parseWithMultipleStrategies(jsonStr: string, originalResponse: string): any {
     // Strategy 1: Direct parsing
     try {
@@ -220,6 +297,9 @@ class GeminiService {
     } catch (error: any) {
       console.warn('[GEMINI] Direct parsing failed:', error.message);
     }
+
+    // Sanitize JSON string before further processing
+    jsonStr = this.sanitizeJsonString(jsonStr);
 
     // Strategy 2: Extract JSON array boundaries
     try {
@@ -246,6 +326,18 @@ class GeminiService {
       }
     } catch (error: any) {
       console.warn('[GEMINI] Fixed JSON parsing failed:', error.message);
+    }
+
+    // Strategy 3.5: Try to fix common JSON issues with better regex
+    try {
+      const betterFixedJson = this.advancedJsonFix(jsonStr);
+      const parsed = JSON.parse(betterFixedJson);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        console.log('[GEMINI] ✅ Advanced JSON fix successful with', parsed.length, 'items');
+        return parsed;
+      }
+    } catch (error: any) {
+      console.warn('[GEMINI] Advanced JSON fix failed:', error.message);
     }
 
     // Strategy 4: Extract individual objects
@@ -284,6 +376,26 @@ class GeminiService {
     throw new Error(`Failed to parse JSON response after all recovery attempts. Response length: ${originalResponse.length}`);
   }
 
+  private advancedJsonFix(jsonStr: string): string {
+    return jsonStr
+      // Fix trailing commas more aggressively
+      .replace(/,(\s*[}\]])/g, '$1')
+      // Fix missing quotes around property names
+      .replace(/([{,]\s*)([a-zA-Z_][a-zA-Z0-9_]*)\s*:/g, '$1"$2":')
+      // Fix single quotes to double quotes
+      .replace(/'/g, '"')
+      // Fix escaped quotes issues
+      .replace(/\\"/g, '\\"')
+      // Remove any trailing commas at the end
+      .replace(/,\s*$/, '')
+      // Ensure proper array closure
+      .replace(/}\s*$/, '}]')
+      // Remove control characters and non-printable characters
+      .replace(/[\x00-\x1F\x7F]/g, '')
+      // Fix multiple consecutive commas
+      .replace(/,+/g, ',');
+  }
+
   private fixCommonJsonIssues(jsonStr: string): string {
     return jsonStr
       // Remove trailing commas
@@ -299,6 +411,13 @@ class GeminiService {
       .replace(/[\x00-\x1F\x7F]/g, '');
   }
 
+  private validateExtractedObject(obj: any): boolean {
+    return obj && typeof obj === 'object' &&
+           typeof obj.user === 'string' && obj.user.trim().length > 0 &&
+           typeof obj.model === 'string' && obj.model.trim().length > 0 &&
+           typeof obj.isCorrect === 'boolean';
+  }
+
   private extractIndividualObjects(text: string): any[] {
     console.log('[GEMINI] Extracting individual JSON objects');
     
@@ -312,7 +431,7 @@ class GeminiService {
     for (const match of matches) {
       try {
         const obj = JSON.parse(match);
-        if (this.isValidQAPair(obj)) {
+        if (this.validateExtractedObject(obj)) {
           validObjects.push(obj);
         }
       } catch (error: any) {
@@ -377,7 +496,7 @@ class GeminiService {
           const objectStr = arrayContent.substring(objectStart, i + 1);
           try {
             const obj = JSON.parse(objectStr);
-            if (this.isValidQAPair(obj)) {
+            if (this.validateExtractedObject(obj)) {
               objects.push(obj);
             }
           } catch (error: any) {
@@ -392,22 +511,20 @@ class GeminiService {
     return objects;
   }
 
-  private isValidQAPair(obj: any): boolean {
-    return obj &&
-           typeof obj.user === 'string' &&
-           typeof obj.model === 'string' &&
-           typeof obj.isCorrect === 'boolean' &&
-           obj.user.trim().length > 0 &&
-           obj.model.trim().length > 0;
-  }
+  // Move isValidQAPair to validateExtractedObject for consistency
 
   public async identifyThemes(
     combinedContent: string,
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<string[]> {
     if (!combinedContent || combinedContent.trim().length < 50) {
-      console.warn('[GEMINI] Content too short for theme identification');
+      console.warn('[GEMINI] Content too short for theme identification:', combinedContent.length);
       return [];
+    }
+
+    if (combinedContent.length > 50000) {
+      console.warn('[GEMINI] Content very large, truncating for theme analysis');
+      combinedContent = combinedContent.substring(0, 50000) + '\n[Content truncated for analysis]';
     }
 
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
@@ -433,6 +550,7 @@ ${combinedContent.substring(0, 8000)}${combinedContent.length > 8000 ? '\n[Conte
 Return ONLY a JSON array of 5-8 theme strings:`;
 
     try {
+      console.log('[GEMINI] Starting theme identification...');
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: 'I understand. I will analyze the content and return only a JSON array of key themes.' },
@@ -440,6 +558,7 @@ Return ONLY a JSON array of 5-8 theme strings:`;
       ], 0.3, 1200);
 
       const themes = this.parseJsonResponse(response.content);
+      console.log('[GEMINI] Raw themes response:', themes);
 
       if (!Array.isArray(themes)) {
         throw new Error('Response is not a valid JSON array');
@@ -450,7 +569,7 @@ Return ONLY a JSON array of 5-8 theme strings:`;
           typeof theme === 'string' && theme.trim().length > 0
       );
 
-      console.log('[GEMINI] Identified themes:', validThemes);
+      console.log('[GEMINI] Filtered valid themes:', validThemes);
       return validThemes.slice(0, 8);
     } catch (error: any) {
       console.error('[GEMINI] Theme identification failed:', error);
@@ -463,8 +582,12 @@ Return ONLY a JSON array of 5-8 theme strings:`;
     identifiedThemes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<{ augmentedText: string; groundingMetadata?: GroundingMetadata }> {
+    if (!this.isReady()) {
+      throw new Error('Gemini service is not ready for web augmentation');
+    }
+
     if (!originalContent || originalContent.trim().length < 100) {
-      console.warn('[GEMINI] Content too short for web augmentation');
+      console.warn('[GEMINI] Content too short for web augmentation:', originalContent.length);
       return { augmentedText: originalContent };
     }
 
@@ -492,6 +615,7 @@ ${originalContent}
 Return ONLY the enhanced, integrated content:`;
 
     try {
+      console.log('[GEMINI] Starting web augmentation...');
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: 'I understand. I will enhance the content with targeted web research while maintaining coherence.' },
@@ -501,7 +625,7 @@ Return ONLY the enhanced, integrated content:`;
       const augmentedText = response.content?.trim() || originalContent;
       const groundingMetadata = response.groundingMetadata;
 
-      console.log('[GEMINI] Web augmentation completed, enhanced content length:', augmentedText.length);
+      console.log('[GEMINI] Web augmentation result length:', augmentedText.length);
       return { augmentedText, groundingMetadata };
     } catch (error: any) {
       console.error('[GEMINI] Web augmentation failed:', error);
@@ -515,7 +639,12 @@ Return ONLY the enhanced, integrated content:`;
     fineTuningGoal: FineTuningGoal = 'knowledge',
     useOpenRouterFallback: boolean = true
   ): Promise<QAPair[]> {
+    if (!this.isReady()) {
+      throw new Error('Gemini service is not ready for Q&A generation');
+    }
+
     if (!content || content.length < 50) {
+      console.error('[GEMINI] Content too short for Q&A generation:', content.length);
       throw new Error('Content too short for Q&A generation (minimum 50 characters)');
     }
 
@@ -530,6 +659,7 @@ Return ONLY the enhanced, integrated content:`;
         console.log('[GEMINI] Attempting OpenRouter fallback for Q&A generation');
         try {
           return await this.generateQAPairsWithOpenRouter(content, themes, fineTuningGoal);
+          console.log('[GEMINI] OpenRouter fallback succeeded');
         } catch (openRouterError: any) {
           console.error('[GEMINI] OpenRouter fallback also failed:', openRouterError.message);
           // Throw the original Gemini error with fallback info
@@ -545,15 +675,23 @@ Return ONLY the enhanced, integrated content:`;
   private shouldFallbackToOpenRouter(error: any): boolean {
     const errorMessage = error.message?.toLowerCase() || '';
     
-    // Fallback for these types of errors
-    return errorMessage.includes('temporarily unavailable') ||
-           errorMessage.includes('all available api keys') ||
-           errorMessage.includes('service unavailable') ||
-           errorMessage.includes('quota exceeded') ||
-           errorMessage.includes('authentication failed') ||
-           errorMessage.includes('502') ||
-           errorMessage.includes('503') ||
-           errorMessage.includes('timeout');
+    // Enhanced fallback conditions
+    const fallbackConditions = [
+      'temporarily unavailable',
+      'all available api keys',
+      'service unavailable',
+      'quota exceeded',
+      'authentication failed',
+      'all_keys_failed',
+      'service_unavailable',
+      'auth_error',
+      '502',
+      '503',
+      'timeout',
+      'fallback_trigger'
+    ];
+
+    return fallbackConditions.some(condition => errorMessage.includes(condition));
   }
 
   private async generateQAPairsWithGemini(
@@ -561,12 +699,15 @@ Return ONLY the enhanced, integrated content:`;
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
+    if (!content || content.trim().length === 0) {
+      throw new Error('Content is empty or invalid for Q&A generation');
+    }
+
+    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}`);
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = themes.length > 0 
       ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure comprehensive coverage of these themes across the generated Q&A pairs.`
       : '';
-
-    console.log(`[GEMINI] Starting Q&A generation for content length: ${content.length}`);
 
     const systemPrompt = `You are an expert Q&A dataset generator specializing in creating high-quality training data for ${goalConfig?.name} fine-tuning.
 
@@ -625,6 +766,7 @@ ${content.substring(0, 12000)}${content.length > 12000 ? '\n[Content continues b
 Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
     try {
+      console.log('[GEMINI] Sending Q&A generation request...');
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: `I understand. I will generate comprehensive Q&A pairs from the content, focusing on quality and relevance for ${goalConfig?.name} fine-tuning. I will respond with only a valid JSON array.` },
@@ -632,6 +774,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
       ], 0.6, 10000);
 
       const qaData = this.parseJsonResponse(response.content);
+      console.log('[GEMINI] Parsed Q&A data:', qaData?.length || 0, 'items');
 
       if (!Array.isArray(qaData)) {
         throw new Error('Response is not a valid JSON array');
@@ -639,7 +782,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
       const validPairs = qaData.filter(
         (item): item is QAPair =>
-          this.isValidQAPair(item)
+          this.validateExtractedObject(item)
       ).map(pair => ({
         ...pair,
         confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
@@ -647,6 +790,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
       }));
 
       console.log(`[GEMINI] Q&A generation completed:`, {
+        contentLength: content.length,
         received: qaData.length,
         valid: validPairs.length,
         correct: validPairs.filter(p => p.isCorrect).length,
@@ -654,7 +798,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
       });
 
       if (validPairs.length === 0) {
-        console.warn('[GEMINI] No valid Q&A pairs generated from content');
+        console.error('[GEMINI] No valid Q&A pairs generated from content');
         throw new Error('Failed to generate any valid Q&A pairs from the content. The content may not be suitable for Q&A generation or the AI service may be experiencing issues.');
       }
 
@@ -662,6 +806,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
     } catch (error: any) {
       console.error(`[GEMINI] Q&A generation failed:`, error);
+      console.error(`[GEMINI] Content length was:`, content.length);
       throw new Error(`Q&A generation failed: ${error.message || 'Unknown error'}`);
     }
   }
@@ -671,12 +816,12 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
     themes: string[] = [],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<QAPair[]> {
-    console.log('[GEMINI] Using OpenRouter fallback for Q&A generation');
-    
     if (!openRouterService.isReady()) {
       throw new Error('OpenRouter fallback service is not available');
     }
 
+    console.log('[GEMINI] Using OpenRouter fallback for Q&A generation');
+    
     const goalConfig = FINE_TUNING_GOALS.find(g => g.id === fineTuningGoal);
     const themeGuidance = themes.length > 0 
       ? `\n\nKEY THEMES TO COVER: ${themes.join(', ')}\nEnsure comprehensive coverage of these themes across the generated Q&A pairs.`
@@ -730,6 +875,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
     try {
       // Use OpenRouter service to make the request
+      console.log('[GEMINI] Sending request to OpenRouter fallback...');
       const response = await openRouterService.makeRequest([
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -737,13 +883,14 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
       const qaData = openRouterService.parseJsonResponse(response);
 
+      console.log('[GEMINI] OpenRouter response parsed:', qaData?.length || 0, 'items');
       if (!Array.isArray(qaData)) {
         throw new Error('OpenRouter response is not a valid JSON array');
       }
 
       const validPairs = qaData.filter(
         (item): item is QAPair =>
-          this.isValidQAPair(item)
+          this.validateExtractedObject(item)
       ).map(pair => ({
         ...pair,
         confidence: pair.confidence || (pair.isCorrect ? 0.9 : 0.2),
@@ -751,6 +898,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
       }));
 
       console.log(`[GEMINI] OpenRouter fallback Q&A generation completed:`, {
+        service: 'OpenRouter',
         received: qaData.length,
         valid: validPairs.length,
         correct: validPairs.filter(p => p.isCorrect).length,
@@ -758,6 +906,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
       });
 
       if (validPairs.length === 0) {
+        console.error('[GEMINI] OpenRouter fallback failed to generate valid pairs');
         throw new Error('OpenRouter fallback failed to generate any valid Q&A pairs');
       }
 
@@ -765,6 +914,7 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
 
     } catch (error: any) {
       console.error('[GEMINI] OpenRouter fallback Q&A generation failed:', error);
+      console.error('[GEMINI] OpenRouter fallback error details:', error.message);
       throw new Error(`OpenRouter fallback failed: ${error.message || 'Unknown error'}`);
     }
   }
@@ -775,6 +925,10 @@ Generate Q&A pairs now (respond with ONLY the JSON array):`;
     generatedQAPairs: QAPair[],
     fineTuningGoal: FineTuningGoal = 'knowledge'
   ): Promise<KnowledgeGap[]> {
+    if (!this.isReady()) {
+      throw new Error('Gemini service is not ready for knowledge gap analysis');
+    }
+
     if (!originalContent || originalContent.length < 100 || generatedQAPairs.length === 0) {
       console.warn('[GEMINI] Insufficient content or Q&A pairs for gap analysis');
       return [];
@@ -819,6 +973,7 @@ ${originalContent.substring(0, 8000)}${originalContent.length > 8000 ? '\n[Conte
 Return ONLY a JSON array of knowledge gap objects:`;
 
     try {
+      console.log('[GEMINI] Starting knowledge gap identification...');
       const response = await this.makeRequest([
         { role: 'user', content: systemPrompt },
         { role: 'assistant', content: `I understand. I will analyze the Q&A dataset comprehensively to identify significant knowledge gaps for ${goalConfig?.name} fine-tuning optimization and respond with only a JSON array.` },
@@ -826,6 +981,7 @@ Return ONLY a JSON array of knowledge gap objects:`;
       ], 0.3, 5000);
 
       const gaps = this.parseJsonResponse(response.content);
+      console.log('[GEMINI] Raw gaps response:', gaps);
 
       if (!Array.isArray(gaps)) {
         throw new Error('Response is not a valid JSON array');
@@ -841,6 +997,7 @@ Return ONLY a JSON array of knowledge gap objects:`;
         Array.isArray(gap.relatedConcepts)
       ).slice(0, 8);
 
+      console.log('[GEMINI] Filtered valid gaps:', validGaps.length);
       console.log('[GEMINI] Identified knowledge gaps:', {
         total: validGaps.length,
         high: validGaps.filter(g => g.priority === 'high').length,
@@ -852,6 +1009,7 @@ Return ONLY a JSON array of knowledge gap objects:`;
 
     } catch (error: any) {
       console.error('[GEMINI] Knowledge gap identification failed:', error);
+      console.error('[GEMINI] Gap identification error details:', error.message);
       throw new Error(`Knowledge gap identification failed: ${error.message || 'Unknown error'}`);
     }
   }

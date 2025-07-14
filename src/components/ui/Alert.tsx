@@ -54,6 +54,18 @@ export const Alert: React.FC<AlertProps> = ({
           {message.split('\n').map((line, index) => (
             <p key={index} className={index > 0 ? 'mt-2' : ''}>
               {line}
+              
+              {/* Add helpful context for common error patterns */}
+              {line.includes('all available API keys') && (
+                <span className="block mt-2 text-xs opacity-80">
+                  💡 This usually indicates a temporary service issue. The system will automatically try backup services.
+                </span>
+              )}
+              {line.includes('Both primary') && line.includes('fallback') && (
+                <span className="block mt-2 text-xs opacity-80">
+                  🔄 Both Gemini and OpenRouter services are currently experiencing issues. This is typically temporary.
+                </span>
+              )}
             </p>
           ))}
           
@@ -61,7 +73,7 @@ export const Alert: React.FC<AlertProps> = ({
           {message.includes('temporarily unavailable') && (
             <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
               <p className="font-semibold mb-2">💡 What you can do:</p>
-              <ul className="text-xs space-y-1 list-disc list-inside">
+              <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
                 <li>Wait 2-3 minutes and try again</li>
                 <li>The system will automatically try backup services</li>
                 <li>Try with smaller content or fewer files</li>
@@ -74,7 +86,7 @@ export const Alert: React.FC<AlertProps> = ({
           {(message.includes('Primary service failed') || message.includes('Fallback service')) && (
             <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
               <p className="font-semibold mb-2">🔄 Service Fallback Information:</p>
-              <ul className="text-xs space-y-1 list-disc list-inside">
+              <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
                 <li>The system automatically tries backup services when the primary fails</li>
                 <li>Both primary (Gemini) and backup (OpenRouter) services are currently unavailable</li>
                 <li>This is usually temporary - wait 5-10 minutes and try again</li>
@@ -87,7 +99,7 @@ export const Alert: React.FC<AlertProps> = ({
           {(message.includes('authentication') || message.includes('API key')) && (
             <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
               <p className="font-semibold mb-2">🔑 API Key Issues:</p>
-              <ul className="text-xs space-y-1 list-disc list-inside">
+              <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
                 <li>Verify your API keys (Gemini & OpenRouter) are correctly set</li>
                 <li>Check that the API keys haven't expired</li>
                 <li>Ensure the API keys have proper permissions</li>
@@ -100,12 +112,25 @@ export const Alert: React.FC<AlertProps> = ({
           {message.includes('all available API keys') && (
             <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
               <p className="font-semibold mb-2">🔧 Troubleshooting:</p>
-              <ul className="text-xs space-y-1 list-disc list-inside">
+              <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
                 <li>Wait 5 minutes - this is often temporary</li>
                 <li>The system will automatically try backup services</li>
                 <li>Try with smaller content or fewer files</li>
                 <li>Check your internet connection</li>
                 <li>Contact support if the issue persists</li>
+              </ul>
+            </div>
+          )}
+          
+          {/* Add troubleshooting for content-related errors */}
+          {(message.includes('too short') || message.includes('no valid') || message.includes('insufficient')) && (
+            <div className="mt-3 p-3 bg-surface/30 rounded border border-current/20">
+              <p className="font-semibold mb-2">📄 Content Issues:</p>
+              <ul className="text-xs space-y-1 list-disc list-inside opacity-90">
+                <li>Ensure your files contain readable text (not just images)</li>
+                <li>PDF files should have selectable text, not scanned images</li>
+                <li>Try adding more content or combining multiple sources</li>
+                <li>Check that URLs point to pages with substantial text content</li>
               </ul>
             </div>
           )}
