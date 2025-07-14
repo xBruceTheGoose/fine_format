@@ -19,7 +19,7 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
     <div className={`w-full ${className}`}>
       <div className="flex items-center justify-between mb-2">
         {showPercentage && (
-          <span className="text-sm text-primary font-bold font-mono tracking-wider\" style={{
+          <span className="text-sm text-primary font-bold font-mono tracking-wider" style={{
             textShadow: '0 0 5px currentColor'
           }}>
             {Math.round(clampedProgress)}%

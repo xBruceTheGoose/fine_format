@@ -6,21 +6,12 @@ class GeminiService {
   private baseUrl = '/.netlify/functions/gemini-chat';
 
   constructor() {
-    this.validateService();
+    // Service validation removed - will be done on first use
     console.log('[GEMINI] Service initialized - using Netlify functions');
   }
 
   public isReady(): boolean {
     return true;
-  }
-
-  private validateService(): void {
-    // Basic service validation
-    if (typeof fetch === 'undefined') {
-      console.error('[GEMINI] Fetch API not available');
-      throw new Error('Fetch API not available');
-    }
-    console.log('[GEMINI] Service validation passed');
   }
 
   private async makeRequest(
