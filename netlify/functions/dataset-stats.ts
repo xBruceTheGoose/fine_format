@@ -1,4 +1,11 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
 import { Handler } from '@netlify/functions';
+
+// Ensure proper export for Netlify
+export { handler };
 
 interface DatasetMetrics {
   total: number;
@@ -15,7 +22,21 @@ let metrics: DatasetMetrics = {
   averageSize: 0
 };
 
-export const handler: Handler = async (event) => {
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error('Could not find root element to mount to');
+}
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+const handler: Handler = async (event) => {
+  console.log('[DATASET-STATS] Function invoked, method:', event.httpMethod);
+  
   if (event.httpMethod === 'POST' && event.body) {
     // Update metrics
     const update = JSON.parse(event.body);
@@ -24,26 +45,3 @@ export const handler: Handler = async (event) => {
     metrics.lastGenerated = new Date().toISOString();
     metrics.averageSize = ((metrics.averageSize * (metrics.total - 1)) + update.size) / metrics.total;
   }
-
-  // Format for shields.io endpoint
-  const response = {
-    schemaVersion: 1,
-    label: "Datasets",
-    message: `${metrics.total} Generated`,
-    color: "success",
-    style: "for-the-badge",
-    namedLogo: "netlify",
-    logoColor: "white"
-  };
-
-  return {
-    statusCode: 200,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
-    },
-    body: JSON.stringify(response)
-  };
-};
