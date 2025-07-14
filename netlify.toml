@@ -1,16 +1,17 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
+[build]
+  command = "npm run build"
+  functions = "netlify/functions"
+  publish = "dist"
 
-const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error('Could not find root element to mount to');
-}
+[build.environment]
+  NODE_VERSION = "18"
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
