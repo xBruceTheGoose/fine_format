@@ -1,214 +1,124 @@
-import { GEMINI_API_KEYS, API_ENDPOINTS } from '../constants';
-import type { Theme, QAPair, SyntheticQAPair, ValidationResult, KnowledgeGap, FineTuningGoal } from '../types';
+import { GEMINI_MODEL, QA_GENERATION_BATCH_SIZE, MAX_CONTENT_LENGTH_PER_BATCH, MAX_OUTPUT_TOKENS_PER_BATCH, INCORRECT_ANSWER_RATIO } from '../constants';
+import type { QAPair, KnowledgeGap, SyntheticQAPair, ValidationResult, FineTuningGoal } from '../types';
 
 class GeminiService {
-  private currentKeyIndex = 0;
+  private apiKey: string | null = null;
+  private isInitialized = false;
+  private baseUrl = '/.netlify/functions/gemini-chat';
 
-  private async makeRequest(endpoint: string, data: any, retries = 3): Promise<any> {
-    for (let attempt = 0; attempt < retries; attempt++) {
-      try {
-        const apiKey = GEMINI_API_KEYS[this.currentKeyIndex];
-        const response = await fetch(`${API_ENDPOINTS.GEMINI}${endpoint}?key=${apiKey}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(data)
-        });
+  constructor() {
+    this.initialize();
+  }
 
-        if (!response.ok) {
-          if (response.status === 429 || response.status === 503) {
-            // Rate limit or service unavailable, try next key
-            this.currentKeyIndex = (this.currentKeyIndex + 1) % GEMINI_API_KEYS.length;
-            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-            continue;
-          }
-          throw new Error(`API request failed: ${response.status}`);
-        }
+  private initialize(): void {
+    // API key will be handled by the Netlify function
+    this.isInitialized = true;
+    console.log('[GEMINI] Service initialized - using Netlify function proxy');
+  }
 
-        const result = await response.json();
-        return result;
-      } catch (error) {
-        if (attempt === retries - 1) throw error;
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+  public isReady(): boolean {
+    return this.isInitialized;
+  }
+
+  private async makeRequest(
+    messages: Array<{ role: string; parts: Array<{ text?: string; inlineData?: any }> }>,
+    temperature = 0.7,
+    maxTokens = 2000,
+    tools?: any
+  ): Promise<string> {
+    if (!this.isInitialized) {
+      throw new Error('Gemini service not initialized');
+    }
+
+    console.log('[GEMINI] Making API request with', messages.length, 'messages, max tokens:', maxTokens);
+
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          tools,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Gemini API error: ${response.status} ${response.statusText} - ${errorText}`);
       }
+
+      const data = await response.json();
+      
+      if (!data.content) {
+        throw new Error('Invalid response from Gemini API');
+      }
+
+      console.log('[GEMINI] Request successful, response length:', data.content.length);
+      return data.content;
+    } catch (error) {
+      console.error('[GEMINI] Request failed:', error);
+      throw error;
     }
   }
 
-  async identifyThemes(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, goal: FineTuningGoal): Promise<Theme[]> {
+  async identifyThemes(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, goal: FineTuningGoal): Promise<string[]> {
     const prompt = `Analyze the following content and identify key themes for ${goal} fine-tuning:
 
 ${content.map(c => `${c.type === 'file' ? `File: ${c.name}` : `URL: ${c.url}`}\n${c.content.substring(0, 2000)}`).join('\n\n')}
 
-Return a JSON array of themes with: name, description, confidence (0-1), questionCount (estimated).`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
+Return a JSON array of theme names (strings only).`;
 
     try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const response = await this.makeRequest([{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }]);
+
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         return JSON.parse(jsonMatch[0]);
       }
     } catch (error) {
-      console.error('Error parsing themes:', error);
+      console.error('Error identifying themes:', error);
     }
 
     return [];
   }
 
-  async performWebResearch(themes: Theme[], goal: FineTuningGoal): Promise<{knowledgeGaps: KnowledgeGap[]}> {
-    const prompt = `Based on these themes for ${goal} fine-tuning, identify knowledge gaps that need additional research:
-
-${themes.map(t => `- ${t.name}: ${t.description}`).join('\n')}
-
-Return JSON with knowledgeGaps array containing: theme, description, priority (1-5), suggestedQuestionTypes, relatedConcepts.`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
-
-    try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (error) {
-      console.error('Error parsing research data:', error);
-    }
-
-    return { knowledgeGaps: [] };
-  }
-
-  async generateQAPairs(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, themes: Theme[], goal: FineTuningGoal): Promise<QAPair[]> {
+  async generateQAPairs(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, themes: string[], goal: FineTuningGoal): Promise<QAPair[]> {
     const prompt = `Generate high-quality question-answer pairs from this content for ${goal} fine-tuning:
 
 Content:
 ${content.map(c => c.content.substring(0, 1500)).join('\n\n')}
 
 Themes to focus on:
-${themes.map(t => `- ${t.name}: ${t.description}`).join('\n')}
+${themes.join(', ')}
 
-Generate 10-15 diverse Q&A pairs. Return JSON array with: question, answer, difficulty (easy/medium/hard), category.`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
+Generate 10-15 diverse Q&A pairs. Return JSON array with: user (question), model (answer), isCorrect (always true).`;
 
     try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      const response = await this.makeRequest([{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }]);
+
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const pairs = JSON.parse(jsonMatch[0]);
         return pairs.map((pair: any, index: number) => ({
-          id: `gemini-${index}`,
-          user: pair.question,
-          model: pair.answer,
+          user: pair.user || pair.question,
+          model: pair.model || pair.answer,
           isCorrect: true,
-          difficulty: pair.difficulty,
-          category: pair.category,
-          source: 'gemini-generated'
+          confidence: 0.9,
+          source: 'original'
         }));
       }
     } catch (error) {
-      console.error('Error parsing Q&A pairs:', error);
-    }
-
-    return [];
-  }
-
-  async generateSyntheticQAPairs(knowledgeGaps: KnowledgeGap[], themes: Theme[], goal: FineTuningGoal): Promise<SyntheticQAPair[]> {
-    const prompt = `Generate synthetic Q&A pairs to fill these knowledge gaps for ${goal} fine-tuning:
-
-Knowledge Gaps:
-${knowledgeGaps.map(gap => `- ${gap.theme}: ${gap.description}`).join('\n')}
-
-Themes:
-${themes.map(t => `- ${t.name}: ${t.description}`).join('\n')}
-
-Generate 8-12 synthetic Q&A pairs. Return JSON array with: question, answer, difficulty, category, targetGap, confidence (0-1).`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
-
-    try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        const pairs = JSON.parse(jsonMatch[0]);
-        return pairs.map((pair: any, index: number) => ({
-          id: `synthetic-${index}`,
-          user: pair.question,
-          model: pair.answer,
-          isCorrect: true,
-          difficulty: pair.difficulty,
-          category: pair.category,
-          targetGap: pair.targetGap,
-          confidence: pair.confidence,
-          source: 'gemini-synthetic'
-        }));
-      }
-    } catch (error) {
-      console.error('Error parsing synthetic pairs:', error);
-    }
-
-    return [];
-  }
-
-  async validateQAPairs(pairs: (QAPair | SyntheticQAPair)[]): Promise<ValidationResult[]> {
-    const prompt = `Validate these Q&A pairs for quality and accuracy:
-
-${pairs.slice(0, 10).map((pair, i) => `${i + 1}. Q: ${pair.user}\nA: ${pair.model}`).join('\n\n')}
-
-Return JSON array with: pairId, isValid (boolean), confidence (0-1), reasoning, factualAccuracy (0-1), relevanceScore (0-1).`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
-
-    try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (error) {
-      console.error('Error parsing validation results:', error);
-    }
-
-    return pairs.map((pair, index) => ({
-      pairId: pair.id || `pair-${index}`,
-      isValid: true,
-      confidence: 0.8,
-      reasoning: 'Auto-validated',
-      factualAccuracy: 0.8,
-      relevanceScore: 0.8
-    }));
-  }
-
-  async generateIncorrectAnswers(pairs: QAPair[]): Promise<Array<{question: string, correctAnswer: string, incorrectAnswers: string[]}>> {
-    const prompt = `For each question, generate 2-3 plausible but incorrect answers:
-
-${pairs.slice(0, 5).map((pair, i) => `${i + 1}. Q: ${pair.user}\nCorrect: ${pair.model}`).join('\n\n')}
-
-Return JSON array with: question, correctAnswer, incorrectAnswers (array).`;
-
-    const response = await this.makeRequest('/generateContent', {
-      contents: [{ parts: [{ text: prompt }] }]
-    });
-
-    try {
-      const text = response.candidates[0].content.parts[0].text;
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (error) {
-      console.error('Error parsing incorrect answers:', error);
+      console.error('Error generating Q&A pairs:', error);
     }
 
     return [];

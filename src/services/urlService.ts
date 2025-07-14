@@ -1,13 +1,15 @@
+import { UrlData } from '../types';
+
 export class UrlService {
   // Multiple CORS proxy services for fallback
-  private readonly PROXY_SERVICES = [
+  private static readonly PROXY_SERVICES = [
     'https://api.allorigins.win/get?url=',
     'https://cors-anywhere.herokuapp.com/',
     'https://thingproxy.freeboard.io/fetch/'
   ];
 
   // Simple web scraping patterns for common content
-  private readonly CONTENT_SELECTORS = [
+  private static readonly CONTENT_SELECTORS = [
     'article',
     'main',
     '.content',
@@ -16,77 +18,119 @@ export class UrlService {
     'p'
   ];
 
-  async fetchUrlContent(url: string): Promise<{
-    title: string;
-    rawContent: string;
-    cleanedText: string;
-    metadata: {
-      url: string;
-      fetchedAt: string;
-      contentLength: number;
-      domain: string;
+  public static async processUrls(urls: string[]): Promise<UrlData[]> {
+    const urlPromises = urls.map((url, index) => 
+      this.processUrl(url, index)
+    );
+    
+    return Promise.all(urlPromises);
+  }
+
+  private static async processUrl(url: string, index: number): Promise<UrlData> {
+    const urlId = `${url}-${Date.now()}-${index}`;
+
+    const baseUrlData: UrlData = {
+      id: urlId,
+      url,
+      rawContent: '',
+      status: 'fetching',
     };
-  }> {
+
+    if (!this.isValidUrl(url)) {
+      return {
+        ...baseUrlData,
+        status: 'failed',
+        error: 'Invalid URL format. Please use http:// or https://',
+      };
+    }
+
     try {
-      // Try direct fetch first (will work for CORS-enabled sites)
-      let response: Response;
-      let content: string;
-
-      try {
-        response = await fetch(url);
-        content = await response.text();
-      } catch (corsError) {
-        // Fallback to proxy service
-        const proxyUrl = `${this.PROXY_SERVICES[0]}${encodeURIComponent(url)}`;
-        response = await fetch(proxyUrl);
-        const data = await response.json();
-        content = data.contents;
+      const content = await this.fetchUrlContent(url);
+      
+      if (!content || content.trim().length < 10) {
+        return {
+          ...baseUrlData,
+          status: 'failed',
+          error: 'URL appears to contain no readable content.',
+        };
       }
-
-      // Parse HTML content
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(content, 'text/html');
-
-      // Extract title
-      const title = doc.querySelector('title')?.textContent || 
-                   doc.querySelector('h1')?.textContent || 
-                   'Untitled';
-
-      // Extract main content using selectors
-      let mainContent = '';
-      for (const selector of this.CONTENT_SELECTORS) {
-        const element = doc.querySelector(selector);
-        if (element && element.textContent && element.textContent.length > 100) {
-          mainContent = element.textContent;
-          break;
-        }
-      }
-
-      // Fallback to body text if no main content found
-      if (!mainContent) {
-        mainContent = doc.body?.textContent || content;
-      }
-
-      // Clean the text
-      const cleanedText = this.cleanText(mainContent);
 
       return {
-        title: title.trim(),
+        ...baseUrlData,
         rawContent: content,
-        cleanedText,
-        metadata: {
-          url,
-          fetchedAt: new Date().toISOString(),
-          contentLength: cleanedText.length,
-          domain: new URL(url).hostname
-        }
+        title: this.extractTitle(content),
+        status: 'fetched',
       };
     } catch (error) {
-      throw new Error(`Failed to fetch URL content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return {
+        ...baseUrlData,
+        status: 'failed',
+        error: `Failed to fetch URL: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
     }
   }
 
-  private cleanText(text: string): string {
+  public static isValidUrl(url: string): boolean {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
+
+  private static async fetchUrlContent(url: string): Promise<string> {
+    // Try direct fetch first (will work for CORS-enabled sites)
+    try {
+      const response = await fetch(url);
+      const content = await response.text();
+      return this.extractTextContent(content);
+    } catch (corsError) {
+      // Fallback to proxy service
+      try {
+        const proxyUrl = `${this.PROXY_SERVICES[0]}${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl);
+        const data = await response.json();
+        return this.extractTextContent(data.contents);
+      } catch (proxyError) {
+        throw new Error('Unable to fetch URL content due to CORS restrictions');
+      }
+    }
+  }
+
+  private static extractTextContent(html: string): string {
+    // Parse HTML content
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    // Extract main content using selectors
+    let mainContent = '';
+    for (const selector of this.CONTENT_SELECTORS) {
+      const element = doc.querySelector(selector);
+      if (element && element.textContent && element.textContent.length > 100) {
+        mainContent = element.textContent;
+        break;
+      }
+    }
+
+    // Fallback to body text if no main content found
+    if (!mainContent) {
+      mainContent = doc.body?.textContent || html;
+    }
+
+    return this.cleanText(mainContent);
+  }
+
+  private static extractTitle(content: string): string {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(content, 'text/html');
+    
+    return doc.querySelector('title')?.textContent || 
+           doc.querySelector('h1')?.textContent || 
+           'Untitled';
+  }
+
+  private static cleanText(text: string): string {
     return text
       // Remove extra whitespace
       .replace(/\s+/g, ' ')
@@ -101,23 +145,4 @@ export class UrlService {
       .join('\n')
       .trim();
   }
-
-  validateUrl(url: string): boolean {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }
-
-  extractDomain(url: string): string {
-    try {
-      return new URL(url).hostname;
-    } catch {
-      return 'unknown';
-    }
-  }
 }
-
-export const urlService = new UrlService();

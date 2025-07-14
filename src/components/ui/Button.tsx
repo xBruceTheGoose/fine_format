@@ -1,42 +1,53 @@
 import React from 'react';
-import { DivideIcon as LucideIcon } from 'lucide-react';
+import { LucideIcon } from 'lucide-react';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'default' | 'outline' | 'ghost' | 'destructive';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
-  icon?: typeof LucideIcon;
+  icon?: LucideIcon;
+  loading?: boolean;
   children: React.ReactNode;
 }
 
-export function Button({ 
-  variant = 'default', 
+export const Button: React.FC<ButtonProps> = ({ 
+  variant = 'primary', 
   size = 'md', 
   icon: Icon,
+  loading = false,
   className = '',
   children,
+  disabled,
   ...props 
-}: ButtonProps) {
-  const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none';
+}) => {
+  const baseClasses = 'cyber-button inline-flex items-center justify-center rounded-lg font-bold font-mono tracking-wide transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50';
   
   const variants = {
-    default: 'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500',
-    outline: 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-indigo-500',
-    ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-indigo-500',
-    destructive: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500'
+    primary: 'text-primary border-primary hover:bg-primary hover:text-background',
+    secondary: 'text-secondary border-secondary hover:bg-secondary hover:text-background',
+    outline: 'text-foreground border-border hover:border-primary hover:text-primary',
+    ghost: 'text-muted border-transparent hover:text-primary hover:bg-surface/70'
   };
 
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base'
+    sm: 'px-3 py-2 text-sm',
+    md: 'px-4 py-3 text-base',
+    lg: 'px-6 py-4 text-lg'
   };
 
   const classes = `${baseClasses} ${variants[variant]} ${sizes[size]} ${className}`;
 
   return (
-    <button className={classes} {...props}>
-      {Icon && <Icon className="w-4 h-4 mr-2" />}
+    <button 
+      className={classes} 
+      disabled={disabled || loading}
+      {...props}
+    >
+      {loading ? (
+        <div className="animate-spin w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+      ) : Icon ? (
+        <Icon size={16} className="mr-2" style={{ filter: 'drop-shadow(0 0 2px currentColor)' }} />
+      ) : null}
       {children}
     </button>
   );
-}
+};
