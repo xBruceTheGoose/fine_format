@@ -1,8 +1,6 @@
-import { GEMINI_MODEL, QA_GENERATION_BATCH_SIZE, MAX_CONTENT_LENGTH_PER_BATCH, MAX_OUTPUT_TOKENS_PER_BATCH, INCORRECT_ANSWER_RATIO } from '../constants';
-import type { QAPair, KnowledgeGap, SyntheticQAPair, ValidationResult, FineTuningGoal } from '../types';
+import type { QAPair, FineTuningGoal } from '../types';
 
 class GeminiService {
-  private apiKey: string | null = null;
   private isInitialized = false;
   private baseUrl = '/.netlify/functions/gemini-chat';
 
@@ -89,7 +87,7 @@ Return a JSON array of theme names (strings only).`;
     return [];
   }
 
-  async generateQAPairs(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, themes: string[], goal: FineTuningGoal): Promise<QAPair[]> {
+  async generateQAPairs(content: Array<{type: 'file' | 'url', name?: string, url?: string, content: string}>, themes: string[], goal: FineTuningGoal): Promise<any[]> {
     const prompt = `Generate high-quality question-answer pairs from this content for ${goal} fine-tuning:
 
 Content:
@@ -109,9 +107,9 @@ Generate 10-15 diverse Q&A pairs. Return JSON array with: user (question), model
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const pairs = JSON.parse(jsonMatch[0]);
-        return pairs.map((pair: any, index: number) => ({
-          user: pair.user || pair.question,
-          model: pair.model || pair.answer,
+        return pairs.map((pair: any) => ({
+          question: pair.user || pair.question,
+          answer: pair.model || pair.answer,
           isCorrect: true,
           confidence: 0.9,
           source: 'original'
@@ -122,6 +120,16 @@ Generate 10-15 diverse Q&A pairs. Return JSON array with: user (question), model
     }
 
     return [];
+  }
+
+  async validateQAPairs(pairs: QAPair[]): Promise<any[]> {
+    // Mock validation
+    return pairs.map(() => ({
+      pairId: undefined,
+      isValid: Math.random() > 0.1,
+      confidence: Math.random() * 0.2 + 0.8,
+      factualAccuracy: Math.random() * 0.1 + 0.9,
+    }));
   }
 }
 

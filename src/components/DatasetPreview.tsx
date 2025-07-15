@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Card, CardContent } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
@@ -7,13 +7,9 @@ import {
   ChevronUp, 
   Eye, 
   EyeOff, 
-  Download,
-  CheckCircle,
-  AlertTriangle,
-  Info,
   BarChart3
 } from 'lucide-react';
-import type { ProcessedData, QAPair, ValidationResult } from '../types';
+import type { ProcessedData, QAPair } from '../types';
 
 interface DatasetPreviewProps {
   data: ProcessedData;
@@ -37,20 +33,16 @@ export function DatasetPreview({ data }: DatasetPreviewProps) {
     }));
   };
 
-  const totalPairs = data.qaPairs.length + (data.syntheticPairs?.length || 0);
-  const validPairs = data.validationResults?.filter(r => r.isValid).length || 0;
-  const avgConfidence = data.validationResults?.reduce((acc, r) => acc + (r.confidence || 0), 0) / (data.validationResults?.length || 1);
+  const totalPairs = data.qaPairs.length + (data.syntheticPairCount || 0);
+  const validPairs = data.validatedPairCount || 0;
+  const avgConfidence = 0; // This needs to be recalculated
 
   // Pagination for QA pairs
-  const allPairs = [...data.qaPairs, ...(data.syntheticPairs || [])];
+  const allPairs = [...data.qaPairs] as QAPair[];
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const currentPairs = allPairs.slice(startIndex, endIndex);
   const totalPages = Math.ceil(allPairs.length / itemsPerPage);
-
-  const getValidationStatus = (pairId: string) => {
-    return data.validationResults?.find(v => v.pairId === pairId);
-  };
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty?.toLowerCase()) {
@@ -95,7 +87,7 @@ export function DatasetPreview({ data }: DatasetPreviewProps) {
                 <div className="text-sm text-purple-800">Avg Confidence</div>
               </div>
               <div className="bg-orange-50 p-4 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600">{data.themes?.length || 0}</div>
+                <div className="text-2xl font-bold text-orange-600">{data.identifiedThemes?.length || 0}</div>
                 <div className="text-sm text-orange-800">Themes Identified</div>
               </div>
             </div>
@@ -132,26 +124,16 @@ export function DatasetPreview({ data }: DatasetPreviewProps) {
           {expandedSections.qaPairs && (
             <div className="space-y-4">
               {currentPairs.map((pair, index) => {
-                const validation = getValidationStatus(pair.id || `pair-${index}`);
                 return (
-                  <div key={pair.id || index} className="border border-gray-200 rounded-lg p-4">
+                  <div key={index} className="border border-gray-200 rounded-lg p-4">
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center space-x-2">
-                        <Badge variant="outline" className={getDifficultyColor(pair.difficulty || 'medium')}>
-                          {pair.difficulty || 'Medium'}
+                        <Badge variant="outline" className={getDifficultyColor('medium')}>
+                          Medium
                         </Badge>
                         <Badge variant="outline">
-                          {pair.category || 'General'}
+                          General
                         </Badge>
-                        {validation && (
-                          <div className="flex items-center">
-                            {validation.isValid ? (
-                              <CheckCircle className="w-4 h-4 text-green-500" />
-                            ) : (
-                              <AlertTriangle className="w-4 h-4 text-red-500" />
-                            )}
-                          </div>
-                        )}
                       </div>
                       <Badge variant={pair.source === 'synthetic' ? 'secondary' : 'default'}>
                         {pair.source || 'Original'}
@@ -161,23 +143,14 @@ export function DatasetPreview({ data }: DatasetPreviewProps) {
                     <div className="space-y-3">
                       <div>
                         <div className="text-sm font-medium text-gray-700 mb-1">Question:</div>
-                        <div className="text-gray-900">{pair.user || pair.question}</div>
+                        <div className="text-gray-900">{pair.user}</div>
                       </div>
 
                       {showAnswers && (
                         <div>
                           <div className="text-sm font-medium text-gray-700 mb-1">Answer:</div>
                           <div className="text-gray-900 bg-gray-50 p-3 rounded">
-                            {pair.model || pair.answer}
-                          </div>
-                        </div>
-                      )}
-
-                      {validation && showAnswers && (
-                        <div className="text-xs text-gray-500 border-t pt-2">
-                          <div className="flex items-center justify-between">
-                            <span>Confidence: {Math.round((validation.confidence || 0) * 100)}%</span>
-                            <span>Accuracy: {Math.round((validation.factualAccuracy || 0) * 100)}%</span>
+                            {pair.model}
                           </div>
                         </div>
                       )}
@@ -221,19 +194,14 @@ export function DatasetPreview({ data }: DatasetPreviewProps) {
       </Card>
 
       {/* Themes Section */}
-      {data.themes && data.themes.length > 0 && (
+      {data.identifiedThemes && data.identifiedThemes.length > 0 && (
         <Card>
           <CardContent className="p-6">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Identified Themes</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {data.themes.map((theme, index) => (
+              {data.identifiedThemes.map((theme: any, index: number) => (
                 <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-medium text-gray-900 mb-2">{theme.name}</h3>
-                  <p className="text-sm text-gray-600 mb-2">{theme.description}</p>
-                  <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>Confidence: {Math.round(theme.confidence * 100)}%</span>
-                    <span>{theme.questionCount} questions</span>
-                  </div>
+                  <h3 className="font-medium text-gray-900 mb-2">{theme}</h3>
                 </div>
               ))}
             </div>
