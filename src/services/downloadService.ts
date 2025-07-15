@@ -26,27 +26,8 @@ class DownloadService {
           { role: 'assistant', content: pair.model }
         ],
         metadata: {
-          difficulty: pair.difficulty,
-          category: pair.category,
           source: pair.source,
           isCorrect: pair.isCorrect
-        }
-      }));
-    });
-
-    // Add synthetic pairs
-    data.syntheticPairs?.forEach(pair => {
-      lines.push(JSON.stringify({
-        messages: [
-          { role: 'user', content: pair.user },
-          { role: 'assistant', content: pair.model }
-        ],
-        metadata: {
-          difficulty: pair.difficulty,
-          category: pair.category,
-          source: pair.source,
-          isCorrect: pair.isCorrect,
-          synthetic: true
         }
       }));
     });
@@ -55,7 +36,7 @@ class DownloadService {
   }
 
   private createCSV(data: ProcessedData): string {
-    const headers = ['question', 'answer', 'difficulty', 'category', 'source', 'is_correct', 'is_synthetic'];
+    const headers = ['question', 'answer', 'source', 'is_correct'];
     const rows = [headers.join(',')];
 
     // Add original pairs
@@ -63,24 +44,8 @@ class DownloadService {
       rows.push([
         this.escapeCSV(pair.user),
         this.escapeCSV(pair.model),
-        pair.difficulty || '',
-        pair.category || '',
         pair.source || '',
         pair.isCorrect.toString(),
-        'false'
-      ].join(','));
-    });
-
-    // Add synthetic pairs
-    data.syntheticPairs?.forEach(pair => {
-      rows.push([
-        this.escapeCSV(pair.user),
-        this.escapeCSV(pair.model),
-        pair.difficulty || '',
-        pair.category || '',
-        pair.source || '',
-        pair.isCorrect.toString(),
-        'true'
       ].join(','));
     });
 

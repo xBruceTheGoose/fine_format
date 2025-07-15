@@ -6,11 +6,11 @@ import { ProgressBar } from './ui/ProgressBar';
 interface ProcessingStatusProps {
   currentStep: string;
   progress: number;
-  isProcessing: boolean;
+  isProcessing?: boolean;
   error?: string;
   estimatedTimeRemaining?: number;
-  completedSteps: string[];
-  totalSteps: number;
+  completedSteps?: string[];
+  totalSteps?: number;
 }
 
 export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
@@ -19,8 +19,8 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
   isProcessing,
   error,
   estimatedTimeRemaining,
-  completedSteps,
-  totalSteps
+  completedSteps = [],
+  totalSteps = 0
 }) => {
   const [dots, setDots] = useState('');
   const intervalRef = useRef<NodeJS.Timeout>();
@@ -97,7 +97,6 @@ export const ProcessingStatus: React.FC<ProcessingStatusProps> = ({
             <ProgressBar 
               progress={progress} 
               className="h-2"
-              variant={error ? 'error' : 'default'}
             />
           </div>
 

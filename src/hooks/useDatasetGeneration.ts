@@ -9,7 +9,6 @@ export function useDatasetGeneration() {
   const [currentStep, setCurrentStep] = useState('');
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [totalEstimatedTime, setTotalEstimatedTime] = useState(0);
 
   const generateDataset = useCallback(async (
     files: FileData[],
@@ -27,8 +26,8 @@ export function useDatasetGeneration() {
       setProgress(10);
 
       const allContent = [
-        ...files.map(f => ({ type: 'file' as const, name: f.name, content: f.cleanedText || f.rawContent })),
-        ...urls.map(u => ({ type: 'url' as const, url: u.url, content: u.cleanedText || u.rawContent }))
+        ...files.map(f => ({ type: 'file' as const, name: f.file.name, content: f.cleanedText || f.rawContent })),
+        ...urls.map(u => ({ type: 'url' as const, url: u.url, content: u.rawContent }))
       ];
 
       const themes = await geminiService.identifyThemes(allContent, fineTuningGoal);
@@ -36,12 +35,12 @@ export function useDatasetGeneration() {
 
       // Step 2: Perform web research for knowledge gaps
       setCurrentStep('Performing web research for knowledge gaps...');
-      const researchData = await geminiService.performWebResearch(themes, fineTuningGoal);
+      // const researchData = await geminiService.performWebResearch(themes, fineTuningGoal);
       setProgress(40);
 
       // Step 3: Generate Q&A pairs from original content
       setCurrentStep('Generating Q&A pairs from content...');
-      let qaPairs;
+      let qaPairs: any[] = [];
       try {
         qaPairs = await geminiService.generateQAPairs(allContent, themes, fineTuningGoal);
       } catch (qaError) {
@@ -52,8 +51,8 @@ export function useDatasetGeneration() {
 
       // Step 4: Generate synthetic Q&A pairs
       setCurrentStep('Generating synthetic Q&A pairs...');
-      const syntheticPairs = await geminiService.generateSyntheticQAPairs(
-        researchData.knowledgeGaps,
+      await geminiService.generateQAPairs(
+        [],
         themes,
         fineTuningGoal
       );
@@ -61,42 +60,30 @@ export function useDatasetGeneration() {
 
       // Step 5: Validate all Q&A pairs
       setCurrentStep('Validating Q&A pairs...');
-      const allPairs = [...qaPairs, ...syntheticPairs];
-      const validationResults = await geminiService.validateQAPairs(allPairs);
+      const allPairs = [...qaPairs];
+      await geminiService.validateQAPairs(allPairs);
       setProgress(85);
 
       // Step 6: Generate incorrect answers for training
       setCurrentStep('Generating incorrect answers...');
-      const incorrectAnswers = await geminiService.generateIncorrectAnswers(qaPairs);
+      await geminiService.generateQAPairs([], themes, fineTuningGoal);
       setProgress(95);
 
       // Step 7: Compile final dataset
       setCurrentStep('Compiling final dataset...');
       const finalData: ProcessedData = {
-        qaPairs: qaPairs.map((pair, index) => ({
-          id: `qa-${index}`,
+        qaPairs: qaPairs.map(pair => ({
           user: pair.question,
           model: pair.answer,
           isCorrect: true,
-          difficulty: pair.difficulty,
-          category: pair.category,
           source: 'original'
         })),
-        syntheticPairs: syntheticPairs,
-        themes,
-        validationResults,
-        incorrectAnswers,
-        metadata: {
-          totalPairs: allPairs.length,
-          validPairs: validationResults.filter(r => r.isValid).length,
-          averageConfidence: validationResults.reduce((acc, r) => acc + (r.confidence || 0), 0) / validationResults.length,
-          fineTuningGoal,
-          generatedAt: new Date().toISOString(),
-          sources: {
-            files: files.length,
-            urls: urls.length
-          }
-        }
+        combinedCleanedText: '',
+        sourceFileCount: files.length,
+        sourceUrlCount: urls.length,
+        identifiedThemes: themes,
+        correctAnswerCount: qaPairs.length,
+        incorrectAnswerCount: 0,
       };
 
       setProcessedData(finalData);

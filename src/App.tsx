@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { FileUpload } from './components/FileUpload';
 import { UrlInput } from './components/UrlInput';
 import { ProcessingStatus } from './components/ProcessingStatus';
@@ -6,13 +6,13 @@ import { DatasetPreview } from './components/DatasetPreview';
 import { useDatasetGeneration } from './hooks/useDatasetGeneration';
 import { Card, CardContent } from './components/ui/Card';
 import { Button } from './components/ui/Button';
-import { Download, Settings, Database, HelpCircle } from 'lucide-react';
+import { Download, Settings, Database } from 'lucide-react';
 import type { FileData, UrlData, FineTuningGoal } from './types';
 
 export default function App() {
   const [files, setFiles] = useState<FileData[]>([]);
   const [urls, setUrls] = useState<UrlData[]>([]);
-  const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('general');
+  const [fineTuningGoal, setFineTuningGoal] = useState<FineTuningGoal>('general' as FineTuningGoal);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const {
@@ -133,7 +133,7 @@ export default function App() {
               <ProcessingStatus
                 currentStep={currentStep}
                 progress={progress}
-                error={error}
+                error={error || undefined}
               />
             )}
 
